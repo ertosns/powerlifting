@@ -18,4 +18,4 @@ datetime 	deadlift 	squat 	bench 	weight 	gross 	total (kgs) 	analysis
 01-12-2025 	330.0 	290.000000 	230.000000 	105.000000 	507.920523 	850.0 	
 
 
-![alt text](https://github.com/ertosns/powerlifting/blob/master/powerlifting.png?raw=true)
+![alt text](https://github.com/ertosns/powerlifting/blob/main/powerlifting.png?raw=true)
