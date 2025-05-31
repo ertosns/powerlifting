@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='../powerlifting/static/bootstrap/css/bootstrap.css') }}">
+    </head>
+    <body>
+        <h2>records</h2>
+        {{ table_html|safe }}
+        <h2>records plot</h2>
+        <img src="data:image/png;base64,{{ plot_url }}" />
+        <h2>analysis</h2>
+        <p> {{ analysis }} </p>
+    </body>
+</html>
