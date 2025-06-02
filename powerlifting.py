@@ -7,10 +7,15 @@ from flask import render_template, Flask
 
 MALE='male'
 FEMALE='female'
-DATA_PATH = os.environ.get('POWERLIFTING_DATA_PATH')
+DATA_PATH="/home/ubuntu/powerlifting_data/powerlifting.csv"
+
 if DATA_PATH is None:
 	print("powerlifting data path isn't set")
 	exit()
+
+app = Flask(__name__)
+app.config.from_object(__name__)
+
 
 def wilks_score(row):
     total = get_total(row)
@@ -36,30 +41,30 @@ def wilks_score(row):
 def get_total(row):
     return row['deadlift'] + row['bench'] + row['squat']
 
-def init_powerlifting(app):
-    plt.rcParams['text.color'] = 'green' # All text (including titles, labels, etc.)
-    plt.rcParams['axes.labelcolor'] = 'green' # Axis labels specifically
-    #plt.legend(facecolor='black', fontsize="x-large")
-    #legend = plt.legend(fontsize="x-large")
-    #legend.get_frame().set_facecolor('red')  # Set background color
 
-    df = pd.read_csv(DATA_PATH)
-    df = df.interpolate()
-    df.set_index('datetime')
-    gross = []
-    total = []
-    for i in df.index:
+plt.rcParams['text.color'] = 'green' # All text (including titles, labels, etc.)
+plt.rcParams['axes.labelcolor'] = 'green' # Axis labels specifically
+#plt.legend(facecolor='black', fontsize="x-large")
+#legend = plt.legend(fontsize="x-large")
+#legend.get_frame().set_facecolor('red')  # Set background color
+
+df = pd.read_csv(DATA_PATH)
+df = df.interpolate()
+df.set_index('datetime')
+gross = []
+total = []
+for i in df.index:
         print(i)
         gross += [wilks_score(df.iloc[i])]
         total += [get_total(df.iloc[i])]
         print(gross)
         print(total)
-    print(gross)
-    df['gross'] = gross
-    df['total (kgs)'] = total
+print(gross)
+df['gross'] = gross
+df['total (kgs)'] = total
 
-    analysis_col = []
-    for i in df.index:
+analysis_col = []
+for i in df.index:
         # the last row is my current
         current = df.iloc[i]
         deadlift = current['deadlift']
@@ -79,53 +84,48 @@ def init_powerlifting(app):
         elif deadlift2squat <= 1.1:
             analysis += "your deadlift is too low, ideal deadlift is 110%-120% of your squat, it shoud be {}-{} ".format(1.2*squat, 1.1*squat)
         analysis_col += [analysis]
-    df['analysis'] = analysis_col
-    df = df.drop('gender', axis=1)
-    table_html = df.to_html(classes="table table-striped", index=False)
-    plt.grid(color='green', linewidth=1.2, linestyle='--', axis='both')
-    fig, ax = plt.subplots()
-    fig.set_size_inches(9, 9)
-    ax.set_facecolor('black')
-    ax.spines['bottom'].set_color('green')  # Bottom axis color
-    ax.spines['top'].set_color('green')        # Top axis color
-    ax.spines['right'].set_color('green')    # Right axis color
-    ax.spines['left'].set_color('green')      # Left axis color
-    ax.xaxis.label.set_color('yellow')
-    ax.yaxis.label.set_color('blue')
-    ax.tick_params(axis='x', colors='green')
-    ax.tick_params(axis='y', colors='green')
-    fig.set_facecolor('black')  # You can use a color name or hex code
-    X = df['datetime']
-    ax.plot(X, df['deadlift'], label='deadlift')
-    ax.legend(facecolor='black', loc="upper left")
-    ax.plot(X, df['squat'], label='squat')
-    ax.legend(loc="upper left")
-    ax.plot(X, df['bench'], label='bench')
-    ax.legend(loc="upper left")
-    ax.plot(X, df['deadlift']+df['squat']+df['bench'], label='total')
-    ax.legend(loc="upper left")
-    ax.plot(X, df['weight'], label='weight')
-    ax.legend(loc="upper left")
-    ax.plot(X, df['gross'], label='wilks score')
-    ax.legend(loc="upper left")
-    plt.xticks(rotation=90)
-    buf = BytesIO()
-    fig.savefig(buf, format="png")
-    buf.seek(0)
-    image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    plt.rcParams["figure.figsize"] = (200,3)
-    plt.close(fig)
+df['analysis'] = analysis_col
+df = df.drop('gender', axis=1)
+table_html = df.to_html(classes="table table-striped", index=False)
+plt.grid(color='green', linewidth=1.2, linestyle='--', axis='both')
+fig, ax = plt.subplots()
+fig.set_size_inches(9, 9)
+ax.set_facecolor('black')
+ax.spines['bottom'].set_color('green')  # Bottom axis color
+ax.spines['top'].set_color('green')        # Top axis color
+ax.spines['right'].set_color('green')    # Right axis color
+ax.spines['left'].set_color('green')      # Left axis color
+ax.xaxis.label.set_color('yellow')
+ax.yaxis.label.set_color('blue')
+ax.tick_params(axis='x', colors='green')
+ax.tick_params(axis='y', colors='green')
+fig.set_facecolor('black')  # You can use a color name or hex code
+X = df['datetime']
+ax.plot(X, df['deadlift'], label='deadlift')
+ax.legend(facecolor='black', loc="upper left")
+ax.plot(X, df['squat'], label='squat')
+ax.legend(loc="upper left")
+ax.plot(X, df['bench'], label='bench')
+ax.legend(loc="upper left")
+ax.plot(X, df['deadlift']+df['squat']+df['bench'], label='total')
+ax.legend(loc="upper left")
+ax.plot(X, df['weight'], label='weight')
+ax.legend(loc="upper left")
+ax.plot(X, df['gross'], label='wilks score')
+ax.legend(loc="upper left")
+plt.xticks(rotation=90)
+buf = BytesIO()
+fig.savefig(buf, format="png")
+buf.seek(0)
+image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+plt.rcParams["figure.figsize"] = (200,3)
+plt.close(fig)
 
-    if analysis == '':
+if analysis == '':
         analysis = 'you are on the right track, deadlift/squat: {}, deadlift/bench: {}'.format(deadlift/squat, deadlift/bench)
-    @app.route('/powerlifting')
-    def index():
+@app.route('/powerlifting')
+def index():
         return render_template("index.html", table_html=table_html, plot_url=image_base64, analysis=analysis)
 
-app = Flask(__name__)
-app.config.from_object(__name__)
-
 if __name__ == '__main__':
-	init_powerlifting(app)
-	app.run('0.0.0.0', port=5001)
-
+    app.run('0.0.0.0', port=54321)
