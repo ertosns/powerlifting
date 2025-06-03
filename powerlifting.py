@@ -5,12 +5,94 @@ from io import BytesIO
 import base64
 import pandas as pd
 import os
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_dance.contrib.google import make_google_blueprint, google
+
+
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///powerlifting.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+#TODO fix
+#db.init_app(app)
+
+login_manager = LoginManager(app)
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+GOOGLE_ID = os.environ.get('GOOGLE_ID')
+GOOGLE_SECRET = os.environ.get('GOOGLE_SECRET')
+google_bp = make_google_blueprint(client_id=GOOGLE_ID,
+                                  client_secret=GOOGLE_SECRET,
+                                  redirect_url="/google_login/callback")
+
+app.register_blueprint(google_bp, url_prefix="/google_login")
+
+from flask_login import UserMixin
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password = db.Column(db.String(256), nullable=False)
+    # Add google_id if using OAuth
+    # records = db.relationship('Record', backref='user', lazy=True)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            flash("Email already registered.")
+            return redirect(url_for("signup"))
+        user = User(email=email, password=generate_password_hash(password))
+        db.session.add(user)
+        db.session.commit()
+        login_user(user)
+        return redirect(url_for("profile"))
+    return render_template("signup.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        user = User.query.filter_by(email=email).first()
+        if user and check_password_hash(user.password, password):
+            login_user(user)
+            return redirect(url_for("profile"))
+        flash("Invalid credentials.")
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+# Google OAuth Login
+@app.route("/google")
+def google_login():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+    resp = google.get("/oauth2/v2/userinfo")
+    info = resp.json()
+    google_id = info["id"]
+    user = User.query.filter_by(google_id=google_id).first()
+    if not user:
+        user = User(email=info["email"], google_id=google_id)
+        db.session.add(user)
+        db.session.commit()
+    login_user(user)
+    return redirect(url_for("profile"))
+
 
 class Record(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -20,6 +102,8 @@ class Record(db.Model):
     bench = db.Column(db.Float, nullable=False)
     weight = db.Column(db.Float, nullable=False)
     gender = db.Column(db.String, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user = db.relationship('User', backref=db.backref('records', lazy=True))
 
 def get_total(row):
     return row['deadlift'] + row['bench'] + row['squat']
@@ -84,6 +168,7 @@ def make_plot(df):
     return image_base64
 
 @app.route('/add_record', methods=['GET', 'POST'])
+@login_required
 def add_record():
     if request.method == 'POST':
         records = Record.query.order_by(Record.id).all()
@@ -104,7 +189,8 @@ def add_record():
             squat=squat,
             bench=bench,
             weight=weight,
-            gender=gender
+            gender=gender,
+            user_id=current_user.id if current_user.is_authenticated else None
         )
         db.session.add(rec)
         db.session.commit()
@@ -134,8 +220,9 @@ def compute_analysis(record):
     return analysis or "Looks balanced!"
 
 @app.route('/profile')
+@login_required
 def profile():
-    records = Record.query.order_by(Record.id).all()
+    records = Record.query.filter_by(user_id=current_user.id).order_by(Record.id).all()
     print('records: {}'.format(records))
     if not records:
         df = pd.DataFrame(columns=['datetime','deadlift','squat','bench','weight','gender'])
@@ -155,7 +242,7 @@ def profile():
 
         for r in records:
                 record_dict = {
-                        'id': r.id,
+                         'id': r.id,
                         'datetime': r.datetime,
                         'deadlift': r.deadlift,
                         'squat': r.squat,
@@ -172,6 +259,7 @@ def profile():
         table_html = ""
         plot_url = ""
         analysis = ""
+    #lifts = Lift.query.filter_by(user_id=current_user.id).all()
     return render_template('profile.html', records=records_with_analysis, plot_url=plot_url, analysis=analysis)
 
 @app.route('/delete_record/<int:record_id>', methods=['POST'])
