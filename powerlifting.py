@@ -43,7 +43,7 @@ class User(UserMixin, db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-@app.route("/signup", methods=["GET", "POST"])
+@app.route("/powerlifting/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
         email = request.form["email"]
@@ -59,7 +59,7 @@ def signup():
         return redirect(url_for("profile"))
     return render_template("signup.html")
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/powerlifting/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form["email"]
@@ -71,14 +71,14 @@ def login():
         flash("Invalid credentials.")
     return render_template("login.html")
 
-@app.route("/logout")
+@app.route("/powerlifting/logout")
 @login_required
 def logout():
     logout_user()
     return redirect(url_for("login"))
 
 # Google OAuth Login
-@app.route("/google")
+@app.route("/powerlifting/google")
 def google_login():
     if not google.authorized:
         return redirect(url_for("google.login"))
