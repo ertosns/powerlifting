@@ -1,6 +1,6 @@
 # records
 
-[powerlifting](https://finai.solutions/powerlifting) coach, app to analyse your training weights, and give you some tips.
+[powerlifting](https://finai.solutions/powerlifting/profile) coach, app to analyse your training weights, and give you some tips.
 
 ## output example:
 

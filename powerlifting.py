@@ -9,26 +9,23 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_dance.contrib.google import make_google_blueprint, google
 
-
-
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY')
+app.secret_key = ''
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///powerlifting.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
-#TODO fix
 #db.init_app(app)
 
 login_manager = LoginManager(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
-GOOGLE_ID = os.environ.get('GOOGLE_ID')
-GOOGLE_SECRET = os.environ.get('GOOGLE_SECRET')
+GOOGLE_ID = ''
+GOOGLE_SECRET = ''
 google_bp = make_google_blueprint(client_id=GOOGLE_ID,
                                   client_secret=GOOGLE_SECRET,
                                   redirect_url="/google_login/callback")
 
-app.register_blueprint(google_bp, url_prefix="/google_login")
+app.register_blueprint(google_bp, url_prefix="/powerlifting/google_login")
 
 from flask_login import UserMixin
 
@@ -167,7 +164,7 @@ def make_plot(df):
     plt.close(fig)
     return image_base64
 
-@app.route('/add_record', methods=['GET', 'POST'])
+@app.route('/powerlifting/add_record', methods=['GET', 'POST'])
 @login_required
 def add_record():
     if request.method == 'POST':
@@ -219,7 +216,7 @@ def compute_analysis(record):
         analysis = "Not enough data for analysis."
     return analysis or "Looks balanced!"
 
-@app.route('/profile')
+@app.route('/powerlifting/profile')
 @login_required
 def profile():
     records = Record.query.filter_by(user_id=current_user.id).order_by(Record.id).all()
@@ -236,11 +233,13 @@ def profile():
             'gender': r.gender
         } for r in records])
     records_with_analysis = []
+    analysis = None
     if not df.empty:
         df['gross'] = df.apply(wilks_score, axis=1)
         df['total (kgs)'] = df.apply(get_total, axis=1)
 
         for r in records:
+                analysis = compute_analysis(r)
                 record_dict = {
                          'id': r.id,
                         'datetime': r.datetime,
@@ -249,27 +248,24 @@ def profile():
                         'bench': r.bench,
                         'weight': r.weight,
                         'gender': r.gender,
-                        'analysis': compute_analysis(r)
+                        'analysis': analysis
                 }
                 records_with_analysis.append(record_dict)
         table_html = df.to_html(classes="table table-striped", index=False)
         plot_url = make_plot(df)
-        analysis = df['gross'].iloc[-1] # or your custom analysis logic
     else:
         table_html = ""
         plot_url = ""
-        analysis = ""
     #lifts = Lift.query.filter_by(user_id=current_user.id).all()
-    return render_template('profile.html', records=records_with_analysis, plot_url=plot_url, analysis=analysis)
+    return render_template('profile.html', records=records_with_analysis, plot_url=plot_url, analysis=analysis, user=current_user)
 
-@app.route('/delete_record/<int:record_id>', methods=['POST'])
+@app.route('/powerlifting/delete_record/<int:record_id>', methods=['POST'])
 def delete_record(record_id):
     record = Record.query.get_or_404(record_id)
     db.session.delete(record)
     db.session.commit()
     flash('Record deleted successfully.', 'success')
     return redirect(url_for('profile'))
-
 
 if __name__ == '__main__':
     with app.app_context():
