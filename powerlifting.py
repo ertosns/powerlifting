@@ -8,13 +8,17 @@ import os
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_dance.contrib.google import make_google_blueprint, google
+from flask_migrate import Migrate
+from models import db, app
 
-app = Flask(__name__)
-app.secret_key = ''
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///powerlifting.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-#db.init_app(app)
+migrate = Migrate(app, db)
+
+
+from models import User, Record
+
+with app.app_context():
+        #db.drop_all()
+        db.create_all()
 
 login_manager = LoginManager(app)
 login_manager.init_app(app)
@@ -23,18 +27,14 @@ GOOGLE_ID = ''
 GOOGLE_SECRET = ''
 google_bp = make_google_blueprint(client_id=GOOGLE_ID,
                                   client_secret=GOOGLE_SECRET,
-                                  redirect_url="/google_login/callback")
+				scope=[
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid"
+    ],
+                                  redirect_url="/powerlifting/google_login/callback")
 
 app.register_blueprint(google_bp, url_prefix="/powerlifting/google_login")
-
-from flask_login import UserMixin
-
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(256), nullable=False)
-    # Add google_id if using OAuth
-    # records = db.relationship('Record', backref='user', lazy=True)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -62,7 +62,7 @@ def login():
         email = request.form["email"]
         password = request.form["password"]
         user = User.query.filter_by(email=email).first()
-        if user and check_password_hash(user.password, password):
+        if user and user.password and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for("profile"))
         flash("Invalid credentials.")
@@ -75,7 +75,7 @@ def logout():
     return redirect(url_for("login"))
 
 # Google OAuth Login
-@app.route("/powerlifting/google")
+@app.route("/powerlifting/google_login/callback", methods=["GET", "POST"])
 def google_login():
     if not google.authorized:
         return redirect(url_for("google.login"))
@@ -84,23 +84,11 @@ def google_login():
     google_id = info["id"]
     user = User.query.filter_by(google_id=google_id).first()
     if not user:
-        user = User(email=info["email"], google_id=google_id)
+        user = User(email=info.get("email"), google_id=google_id)
         db.session.add(user)
         db.session.commit()
     login_user(user)
     return redirect(url_for("profile"))
-
-
-class Record(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    datetime = db.Column(db.String, nullable=False)
-    deadlift = db.Column(db.Float, nullable=False)
-    squat = db.Column(db.Float, nullable=False)
-    bench = db.Column(db.Float, nullable=False)
-    weight = db.Column(db.Float, nullable=False)
-    gender = db.Column(db.String, nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    user = db.relationship('User', backref=db.backref('records', lazy=True))
 
 def get_total(row):
     return row['deadlift'] + row['bench'] + row['squat']
@@ -211,7 +199,7 @@ def compute_analysis(record):
         if deadlift2squat >= 1.2:
             analysis += "Your squat is too low; ideal squat relative to your deadlift should be {:.1f}-{:.1f}. ".format(deadlift / 1.2, deadlift / 1.1)
         elif deadlift2squat <= 1.1:
-            analysis += "Your deadlift is too low; ideal deadlift is 110%-120% of your squat, it should be {:.1f}-{:.1f}. ".format(1.2 * squat, 1.1 * squat)
+            analysis += "Your deadlift is too low; ideal deadlift is 110%-120% of your squat, it should be {:.1f}-{:.1f}. ".format(1.1 * squat, 1.2 * squat)
     else:
         analysis = "Not enough data for analysis."
     return analysis or "Looks balanced!"

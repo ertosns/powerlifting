@@ -2,3 +2,4 @@ __pycache__
 *.sock
 instance
 flycheck_powerlifting.py
+migrations
