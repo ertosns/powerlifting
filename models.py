@@ -2,9 +2,8 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
 from flask import Flask
 
-
 app = Flask(__name__)
-app.secret_key = ''
+app.secret_key = b'\xf6\x91\nKp\x13\xd4\xf3$!\xa2\x00\xf6\xd4\xa6\x0cB\x89B>\x1b\xf8'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///powerlifting_b7.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 class Base(DeclarativeBase):
@@ -43,5 +42,7 @@ class Record(db.Model):
     bench = db.Column(db.Float, nullable=False)
     weight = db.Column(db.Float, nullable=False)
     gender = db.Column(db.String, nullable=False)
+    is_target = db.Column(db.String, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
     user = db.relationship('User', backref=db.backref('records', lazy=True))

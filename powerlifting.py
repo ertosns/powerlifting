@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 import matplotlib.pyplot as plt
 from io import BytesIO
@@ -10,14 +10,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_migrate import Migrate
 from models import db, app
+from io import BytesIO
 
 migrate = Migrate(app, db)
-
 
 from models import User, Record
 
 with app.app_context():
-        #db.drop_all()
         db.create_all()
 
 login_manager = LoginManager(app)
@@ -152,6 +151,33 @@ def make_plot(df):
     plt.close(fig)
     return image_base64
 
+def make_download_plot(df):
+    plt.grid(color='green', linewidth=1.2, linestyle='--', axis='both')
+    fig, ax = plt.subplots()
+    ax.set_title("https://finai.solutions/powerlifting/profile")
+    ax.text(0.1, 0.9, "Squat: {}, Bench: {}, Deadlift: {}".format(df['squat'].iloc[-1], df['bench'].iloc[-1], df['deadlift'].iloc[-1]), size=15, color='black')
+    fig.set_size_inches(9, 9)
+    ax.set_facecolor('black')
+    ax.spines['bottom'].set_color('green')
+    ax.spines['top'].set_color('green')
+    ax.spines['right'].set_color('green')
+    ax.spines['left'].set_color('green')
+    ax.tick_params(axis='x', colors='green')
+    ax.tick_params(axis='y', colors='green')
+    fig.set_facecolor('black')
+    X = df['datetime']
+    ax.plot(X, df['deadlift'], label='deadlift')
+    ax.plot(X, df['squat'], label='squat')
+    ax.plot(X, df['bench'], label='bench')
+    ax.legend(loc="upper left")
+
+    plt.xticks(rotation=90)
+    buf = BytesIO()
+    fig.savefig(buf, format="png")
+    buf.seek(0)
+    plt.close(fig)
+    return buf
+
 @app.route('/powerlifting/add_record', methods=['GET', 'POST'])
 @login_required
 def add_record():
@@ -163,19 +189,20 @@ def add_record():
         squat = request.form.get('squat')
         bench = request.form.get('bench')
         deadlift = request.form.get('deadlift')
-
+        is_target = request.form['is_target']
         squat = float(squat) if squat else get_previous_value(records, 'squat', 0)
         bench = float(bench) if bench else get_previous_value(records, 'bench', 0)
         deadlift = float(deadlift) if deadlift else get_previous_value(records, 'deadlift', 0)
 
         rec = Record(
-            datetime=date,
-            deadlift=deadlift,
-            squat=squat,
-            bench=bench,
-            weight=weight,
-            gender=gender,
-            user_id=current_user.id if current_user.is_authenticated else None
+                datetime=date,
+                deadlift=deadlift,
+                squat=squat,
+                bench=bench,
+                weight=weight,
+                gender=gender,
+                is_target=is_target,
+                user_id=current_user.id if current_user.is_authenticated else None
         )
         db.session.add(rec)
         db.session.commit()
@@ -204,22 +231,41 @@ def compute_analysis(record):
         analysis = "Not enough data for analysis."
     return analysis or "Looks balanced!"
 
+def add_days_to_date(date_str, days):
+    # Convert the string to a datetime object
+    date = pd.to_datetime(date_str, format='%Y-%m-%d')
+    # Add the specified number of days
+    new_date = date + pd.Timedelta(days=days)
+    # Convert back to string in the same format
+    return new_date.strftime('%Y-%m-%d')
+
 @app.route('/powerlifting/profile')
 @login_required
 def profile():
     records = Record.query.filter_by(user_id=current_user.id).order_by(Record.id).all()
-    print('records: {}'.format(records))
     if not records:
         df = pd.DataFrame(columns=['datetime','deadlift','squat','bench','weight','gender'])
     else:
-        df = pd.DataFrame([{
-            'datetime': r.datetime,
-            'deadlift': r.deadlift,
-            'squat': r.squat,
-            'bench': r.bench,
-            'weight': r.weight,
-            'gender': r.gender
-        } for r in records])
+        recs =[]
+        for r in records:
+                if r.is_target == 'target':
+                        while len(recs)>1:
+                                interpolate_date = add_days_to_date(recs[-1]['datetime'], 30)
+                                if interpolate_date < r.datetime:
+                                        recs += [{'datetime':  interpolate_date}]
+                                else:
+                                        break
+                dict_rec = {
+                        'datetime': r.datetime,
+                        'deadlift': r.deadlift,
+                        'squat': r.squat,
+                        'bench': r.bench,
+                        'weight': r.weight,
+                        'gender': r.gender
+                }
+                recs+=[dict_rec]
+        df = pd.DataFrame(recs)
+        df = df.interpolate()
     records_with_analysis = []
     analysis = None
     if not df.empty:
@@ -238,14 +284,25 @@ def profile():
                         'gender': r.gender,
                         'analysis': analysis
                 }
+                #TODO interpolate
+                if r.is_target == 'target':
+                        while len(records_with_analysis)>1:
+                                interpolate_date = add_days_to_date(records_with_analysis[-1]['datetime'], 30)
+                                if interpolate_date < r.datetime:
+                                        records_with_analysis += [{'datetime':  interpolate_date}]
+                                else:
+                                        break
                 records_with_analysis.append(record_dict)
         table_html = df.to_html(classes="table table-striped", index=False)
+        df.sort_values(by='datetime', inplace=True)
         plot_url = make_plot(df)
     else:
         table_html = ""
         plot_url = ""
-    #lifts = Lift.query.filter_by(user_id=current_user.id).all()
-    return render_template('profile.html', records=records_with_analysis, plot_url=plot_url, analysis=analysis, user=current_user)
+    df = pd.DataFrame(records_with_analysis)
+    df.sort_values(by='datetime', inplace=True)
+    interpolated_records = df.interpolate().to_dict('records')
+    return render_template('profile.html', records=interpolated_records, plot_url=plot_url, analysis=analysis, user=current_user)
 
 @app.route('/powerlifting/delete_record/<int:record_id>', methods=['POST'])
 def delete_record(record_id):
@@ -254,6 +311,53 @@ def delete_record(record_id):
     db.session.commit()
     flash('Record deleted successfully.', 'success')
     return redirect(url_for('profile'))
+
+@app.route('/powerlifting/download')
+def download_plot():
+    # You may have a database call here to get records
+    img_bytes = get_records_from_database()
+
+    # If make_plot returns a BytesIO object:
+    img_bytes.seek(0)
+    return send_file(
+        img_bytes,
+        mimetype='image/png',
+        as_attachment=True,
+        download_name='records_plot.png'
+    )
+
+# Helper function examples
+def get_records_from_database():
+    # Implement your DB query here
+    records = Record.query.filter_by(user_id=current_user.id).order_by(Record.id).all()
+    records = records if records else []  # Return an empty list if no records found
+    if not records:
+        df = pd.DataFrame(columns=['datetime','deadlift','squat','bench','weight','gender'])
+    else:
+        recs =[]
+        for r in records:
+                if r.datetime > pd.Timestamp.now().strftime('%Y-%m-%d'):
+                        continue
+                if r.is_target == 'target':
+                        while len(recs)>1:
+                                interpolate_date = add_days_to_date(recs[-1]['datetime'], 30)
+                                if interpolate_date < r.datetime:
+                                        recs += [{'datetime':  interpolate_date}]
+                                else:
+                                        break
+                dict_rec = {
+                        'datetime': r.datetime,
+                        'deadlift': r.deadlift,
+                        'squat': r.squat,
+                        'bench': r.bench,
+                        'weight': r.weight,
+                        'gender': r.gender
+                }
+                recs+=[dict_rec]
+        df = pd.DataFrame(recs)
+        df = df.interpolate()
+    ##
+    return make_download_plot(df)
 
 if __name__ == '__main__':
     with app.app_context():
