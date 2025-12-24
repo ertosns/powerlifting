@@ -6,7 +6,8 @@ from sqlalchemy import create_engine
 
 def generate_total_curve_image():
     # Load real data from SQLite DB
-    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'powerlifting.db')
+    # Use the same database path as models.py (in instance folder)
+    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'powerlifting_b7.db')
     engine = create_engine(f'sqlite:///{db_path}')
     df = pd.read_sql('SELECT id, datetime, deadlift, squat, bench FROM Record', engine)
     # Parse date and sort strictly ascending
