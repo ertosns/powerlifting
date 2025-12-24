@@ -14,17 +14,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          printf "%s\n" "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
-          # Debug: Check if key file is valid
-          head -n 1 ~/.ssh/id_rsa
-          # Test SSH connection
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH connection successful'"
-
       - name: Create deployment package
         run: |
           tar -czf /tmp/deploy.tar.gz \
@@ -39,12 +28,21 @@ jobs:
           mv /tmp/deploy.tar.gz ./deploy.tar.gz
 
       - name: Copy files to VPS
-        run: |
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no deploy.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "deploy.tar.gz"
+          target: "/tmp/"
 
       - name: Deploy on VPS
-        run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'ENDSSH'
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
             set -e
             
             # Define directories
@@ -99,11 +97,13 @@ jobs:
             echo "Container status:"
             sudo docker compose ps
             sudo docker compose logs --tail=50
-          ENDSSH
 
       - name: Verify deployment
-        run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'ENDSSH'
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
             echo "Checking container logs..."
             sudo docker logs --tail 50 powerlifting-app
-          ENDSSH
