@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import base64
 import pandas as pd
+from PIL import Image
+import os
 
 def make_total_curve_plot(df):
     plt.rcParams['text.color'] = 'lime'
@@ -14,6 +16,15 @@ def make_total_curve_plot(df):
     plt.grid(color='lime', linewidth=2, linestyle='--', axis='both')
     fig, ax = plt.subplots()
     fig.set_size_inches(16, 10)
+    
+    # Load and add logo as background watermark
+    logo_path = os.path.join(os.path.dirname(__file__), 'static', 'powerlifting_minimal.png')
+    if os.path.exists(logo_path):
+        logo = Image.open(logo_path)
+        # Position the logo in the center as a watermark
+        fig.figimage(logo, xo=fig.bbox.xmax/2 - logo.size[0]/2, yo=fig.bbox.ymax/2 - logo.size[1]/2, 
+                     alpha=0.15, zorder=1)
+    
     ax.set_facecolor('black')
     ax.spines['bottom'].set_color('lime')
     ax.spines['top'].set_color('lime')
