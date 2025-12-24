@@ -27,12 +27,25 @@ jobs:
             .
           mv /tmp/deploy.tar.gz ./deploy.tar.gz
 
+      - name: Test SSH Connection
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "SSH connection successful!"
+            whoami
+            pwd
+
       - name: Copy files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
           source: "deploy.tar.gz"
           target: "/tmp/"
           debug: true
@@ -44,6 +57,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
           script: |
             set -e
             
@@ -106,6 +120,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
           script: |
             echo "Checking container logs..."
             sudo docker logs --tail 50 powerlifting-app
