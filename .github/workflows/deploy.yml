@@ -47,7 +47,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           source: "deploy.tar.gz"
-          target: "/tmp/"
+          target: "powerlifting/"
           debug: true
           strip_components: 0
 
@@ -65,6 +65,7 @@ jobs:
             APP_DIR="/opt/powerlifting"
             DATA_DIR="/opt/powerlifting/data"
             INSTANCE_DIR="/opt/powerlifting/instance"
+            DEPLOY_FILE="$HOME/powerlifting/deploy.tar.gz"
             
             # Create directories if they don't exist
             sudo mkdir -p $APP_DIR
@@ -80,7 +81,7 @@ jobs:
             # Extract new code
             sudo rm -rf $APP_DIR/tmp_deploy
             sudo mkdir -p $APP_DIR/tmp_deploy
-            sudo tar -xzf /tmp/deploy.tar.gz -C $APP_DIR/tmp_deploy
+            sudo tar -xzf "$DEPLOY_FILE" -C $APP_DIR/tmp_deploy
             
             # Move new code to app directory (preserve instance and data)
             sudo rsync -av --exclude='instance' --exclude='data' $APP_DIR/tmp_deploy/ $APP_DIR/
@@ -110,7 +111,7 @@ jobs:
             sudo docker image prune -f
             
             # Cleanup
-            rm -f /tmp/deploy.tar.gz
+            rm -f "$DEPLOY_FILE"
             
             echo "Deployment completed successfully!"
             echo "Container status:"
