@@ -28,11 +28,22 @@ def make_total_curve_plot(df):
     def get_total(row):
         return row['deadlift'] + row['bench'] + row['squat']
     total = df.apply(get_total, axis=1)
+    
+    # Plot individual lifts in different colors
+    ax.plot(X, df['squat'], label='Squat', color='cyan', linewidth=2.5, alpha=0.8)
+    ax.plot(X, df['bench'], label='Bench', color='magenta', linewidth=2.5, alpha=0.8)
+    ax.plot(X, df['deadlift'], label='Deadlift', color='yellow', linewidth=2.5, alpha=0.8)
     ax.plot(X, total, label='Total', color='lime', linewidth=3)
+    
     ax.set_xlabel('Date', fontsize=16, color='lime', fontweight='bold')
-    ax.set_ylabel('Total (kgs)', fontsize=16, color='lime', fontweight='bold')
-    #legend = ax.legend(loc="upper left")
-    #plt.setp(legend.get_texts(), fontsize=5, color='lime', fontweight='bold')
+    ax.set_ylabel('Weight (kgs)', fontsize=16, color='lime', fontweight='bold')
+    
+    # Add legend
+    legend = ax.legend(loc="upper left", fontsize=14, framealpha=0.9)
+    plt.setp(legend.get_texts(), color='lime', fontweight='bold')
+    legend.get_frame().set_facecolor('black')
+    legend.get_frame().set_edgecolor('lime')
+    
     plt.xticks(rotation=45, color='lime', fontsize=16, fontweight='bold')
     plt.yticks(color='lime', fontsize=16, fontweight='bold')
     buf = BytesIO()
