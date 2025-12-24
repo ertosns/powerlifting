@@ -71,9 +71,11 @@ jobs:
             sudo mkdir -p $DATA_DIR
             sudo mkdir -p $INSTANCE_DIR
             
-            # --- Systemd Migration & Cleanup ---
+            # --- Systemd Migration (Stop & Copy) ---
+            SYSTEMD_SERVICE_EXISTS=false
             if systemctl list-units --full -all | grep -Fq 'powerlifting.service'; then
                 echo "Found existing systemd service. Starting migration..."
+                SYSTEMD_SERVICE_EXISTS=true
                 
                 # Get old working directory
                 OLD_WORKDIR=$(systemctl show -p WorkingDirectory powerlifting.service | cut -d= -f2)
@@ -98,12 +100,6 @@ jobs:
                 else
                     echo "Database already exists in target location. Skipping migration."
                 fi
-                
-                echo "Removing systemd service file..."
-                sudo rm -f /etc/systemd/system/powerlifting.service
-                sudo systemctl daemon-reload
-                sudo systemctl reset-failed
-                echo "Systemd cleanup complete."
             fi
             # -----------------------------------
 
@@ -142,6 +138,46 @@ jobs:
             EOF
             sudo docker compose up -d --build
             
+            # Wait for container to be ready
+            echo "Waiting for container to initialize..."
+            sleep 10
+            
+            # --- Verification & Cleanup ---
+            echo "Verifying database records..."
+            # Run python script inside container to count records
+            RECORD_OUTPUT=$(sudo docker exec powerlifting-app python -c "from models import app, db, Record; \
+            with app.app_context(): \
+                try: \
+                    print(f'COUNT:{Record.query.count()}') \
+                except Exception as e: \
+                    print(f'Error: {e}') \
+                    print('COUNT:0')")
+            
+            RECORD_COUNT=$(echo "$RECORD_OUTPUT" | grep "COUNT:" | cut -d: -f2 | tr -d '[:space:]')
+            
+            echo "Container reported record count: $RECORD_COUNT"
+            
+            # Check if RECORD_COUNT is a number and greater than 0
+            if [[ "$RECORD_COUNT" =~ ^[0-9]+$ ]] && [ "$RECORD_COUNT" -gt 0 ]; then
+                echo "Data verification successful. Found $RECORD_COUNT records."
+                
+                if [ "$SYSTEMD_SERVICE_EXISTS" = true ]; then
+                    echo "Removing old systemd service file..."
+                    sudo rm -f /etc/systemd/system/powerlifting.service
+                    sudo systemctl daemon-reload
+                    sudo systemctl reset-failed
+                    echo "Systemd cleanup complete."
+                fi
+            else
+                echo "WARNING: Verification failed or no records found (Count: $RECORD_COUNT)."
+                echo "Skipping systemd service removal to allow rollback if needed."
+                echo "You may need to check logs: sudo docker logs powerlifting-app"
+                if [ "$SYSTEMD_SERVICE_EXISTS" = true ]; then
+                     echo "To revert to systemd: sudo systemctl start powerlifting"
+                fi
+                exit 1
+            fi
+            
             # Clean up old images
             sudo docker image prune -f
             
@@ -151,15 +187,3 @@ jobs:
             echo "Deployment completed successfully!"
             echo "Container status:"
             sudo docker compose ps
-            sudo docker compose logs --tail=50
-
-      - name: Verify deployment
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          script: |
-            echo "Checking container logs..."
-            sudo docker logs --tail 50 powerlifting-app
