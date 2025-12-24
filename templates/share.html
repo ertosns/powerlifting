@@ -3,6 +3,7 @@
     <head>
         <meta charset="utf-8">
         <title>Shared Powerlifting Progress</title>
+        <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
         <style>
             body {
@@ -20,7 +21,10 @@
     <body>
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container">
-                <a class="navbar-brand" href="#">Powerlifting Progress</a>
+                <a class="navbar-brand" href="#">
+                    <img src="{{ url_for('static', filename='logo_64.png') }}" alt="Logo" height="40" class="d-inline-block align-text-top">
+                    Powerlifting Progress
+                </a>
             </div>
         </nav>
         <div class="container">
