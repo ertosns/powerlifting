@@ -29,11 +29,17 @@ def make_total_curve_plot(df):
         return row['deadlift'] + row['bench'] + row['squat']
     total = df.apply(get_total, axis=1)
     
-    # Plot individual lifts in different colors
-    ax.plot(X, df['squat'], label='Squat', color='cyan', linewidth=2.5, alpha=0.8)
-    ax.plot(X, df['bench'], label='Bench', color='magenta', linewidth=2.5, alpha=0.8)
-    ax.plot(X, df['deadlift'], label='Deadlift', color='yellow', linewidth=2.5, alpha=0.8)
-    ax.plot(X, total, label='Total', color='lime', linewidth=3)
+    # Get last values for legend
+    last_squat = df['squat'].iloc[-1] if len(df) > 0 else 0
+    last_bench = df['bench'].iloc[-1] if len(df) > 0 else 0
+    last_deadlift = df['deadlift'].iloc[-1] if len(df) > 0 else 0
+    last_total = total.iloc[-1] if len(total) > 0 else 0
+    
+    # Plot individual lifts in different colors with last values in legend
+    ax.plot(X, df['squat'], label=f'Squat ({last_squat} kg)', color='cyan', linewidth=2.5, alpha=0.8)
+    ax.plot(X, df['bench'], label=f'Bench ({last_bench} kg)', color='magenta', linewidth=2.5, alpha=0.8)
+    ax.plot(X, df['deadlift'], label=f'Deadlift ({last_deadlift} kg)', color='yellow', linewidth=2.5, alpha=0.8)
+    ax.plot(X, total, label=f'Total ({last_total} kg)', color='lime', linewidth=3)
     
     ax.set_xlabel('Date', fontsize=16, color='lime', fontweight='bold')
     ax.set_ylabel('Weight (kgs)', fontsize=16, color='lime', fontweight='bold')
