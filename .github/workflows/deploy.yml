@@ -101,9 +101,9 @@ jobs:
             echo "Building and starting containers..."
             # Create .env file with secrets
             cat > .env << EOF
-GOOGLE_ID=${{ secrets.GOOGLE_ID }}
-GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }}
-EOF
+            GOOGLE_ID=${{ secrets.GOOGLE_ID }}
+            GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }}
+            EOF
             sudo docker compose up -d --build
             
             # Clean up old images
