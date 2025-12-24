@@ -23,16 +23,16 @@ jobs:
 
       - name: Create deployment package
         run: |
-          tar -czf deploy.tar.gz \
+          tar -czf /tmp/deploy.tar.gz \
             --exclude='.git' \
             --exclude='instance' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
-            --exclude='deploy.tar.gz' \
             --exclude='.github' \
             --exclude='venv' \
             --exclude='node_modules' \
             .
+          mv /tmp/deploy.tar.gz ./deploy.tar.gz
 
       - name: Copy files to VPS
         run: |
