@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  powerlifting:
+    build: .
+    container_name: powerlifting-app
+    restart: unless-stopped
+    ports:
+      - "54321:54321"
+    volumes:
+      - ./instance:/app/instance
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=production
+      - GOOGLE_ID=${GOOGLE_ID}
+      - GOOGLE_SECRET=${GOOGLE_SECRET}
+    networks:
+      - powerlifting-network
+
+networks:
+  powerlifting-network:
+    driver: bridge

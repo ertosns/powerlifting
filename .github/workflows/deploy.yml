@@ -1,0 +1,96 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create deployment package
+        run: |
+          tar -czf deploy.tar.gz --exclude='.git' --exclude='instance' --exclude='__pycache__' --exclude='*.pyc' .
+
+      - name: Copy files to VPS
+        run: |
+          scp -i ~/.ssh/id_rsa deploy.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/
+
+      - name: Deploy on VPS
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'ENDSSH'
+            set -e
+            
+            # Define directories
+            APP_DIR="/opt/powerlifting"
+            DATA_DIR="/opt/powerlifting/data"
+            INSTANCE_DIR="/opt/powerlifting/instance"
+            
+            # Create directories if they don't exist
+            sudo mkdir -p $APP_DIR
+            sudo mkdir -p $DATA_DIR
+            sudo mkdir -p $INSTANCE_DIR
+            
+            # Backup existing data if it exists
+            if [ -f "$INSTANCE_DIR/powerlifting_b7.db" ]; then
+              echo "Backing up database..."
+              sudo cp $INSTANCE_DIR/powerlifting_b7.db $DATA_DIR/powerlifting_b7.db.backup.$(date +%Y%m%d_%H%M%S)
+            fi
+            
+            # Extract new code
+            sudo rm -rf $APP_DIR/tmp_deploy
+            sudo mkdir -p $APP_DIR/tmp_deploy
+            sudo tar -xzf /tmp/deploy.tar.gz -C $APP_DIR/tmp_deploy
+            
+            # Move new code to app directory (preserve instance and data)
+            sudo rsync -av --exclude='instance' --exclude='data' $APP_DIR/tmp_deploy/ $APP_DIR/
+            sudo rm -rf $APP_DIR/tmp_deploy
+            
+            # Change to app directory
+            cd $APP_DIR
+            
+            # Ensure proper permissions
+            sudo chown -R ${{ secrets.VPS_USER }}:${{ secrets.VPS_USER }} $APP_DIR
+            sudo chmod -R 755 $APP_DIR
+            
+            # Stop and remove existing containers using docker compose v2
+            echo "Stopping existing containers..."
+            sudo docker compose down || true
+            
+            # Build and start containers with docker compose v2
+            echo "Building and starting containers..."
+            export GOOGLE_ID="${{ secrets.GOOGLE_ID }}"
+            export GOOGLE_SECRET="${{ secrets.GOOGLE_SECRET }}"
+            sudo -E docker compose up -d --build
+            
+            # Clean up old images
+            sudo docker image prune -f
+            
+            # Cleanup
+            rm -f /tmp/deploy.tar.gz
+            
+            echo "Deployment completed successfully!"
+            echo "Container status:"
+            sudo docker compose ps
+            sudo docker compose logs --tail=50
+          ENDSSH
+
+      - name: Verify deployment
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'ENDSSH'
+            echo "Checking container logs..."
+            sudo docker logs --tail 50 powerlifting-app
+          ENDSSH

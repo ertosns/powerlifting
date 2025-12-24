@@ -20,6 +20,9 @@
                 </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
                     <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/powerlifting/profile">Home</a>
+                        </li>
                         {% if user and user.email != 'guest' %}
                         <li class="nav-item">
                             <a class="nav-link" href="/powerlifting/profile">Welcome ({{ user.email }})</a>

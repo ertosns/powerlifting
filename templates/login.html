@@ -10,10 +10,15 @@
     <body>
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container">
-                <a class="navbar-brand" href="/powerlifting/login">
+                <a class="navbar-brand" href="/powerlifting/profile">
                     <img src="{{ url_for('static', filename='logo_64.png') }}" alt="Logo" height="40" class="d-inline-block align-text-top me-2">
                     Powerlifting Tracker
                 </a>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/powerlifting/profile">Home</a>
+                    </li>
+                </ul>
             </div>
         </nav>
         <div class="container py-4">
