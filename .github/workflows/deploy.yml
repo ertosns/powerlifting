@@ -99,9 +99,12 @@ jobs:
             
             # Build and start containers with docker compose v2
             echo "Building and starting containers..."
-            export GOOGLE_ID="${{ secrets.GOOGLE_ID }}"
-            export GOOGLE_SECRET="${{ secrets.GOOGLE_SECRET }}"
-            sudo -E docker compose up -d --build
+            # Create .env file with secrets
+            cat > .env << EOF
+GOOGLE_ID=${{ secrets.GOOGLE_ID }}
+GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }}
+EOF
+            sudo docker compose up -d --build
             
             # Clean up old images
             sudo docker image prune -f
