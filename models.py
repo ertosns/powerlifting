@@ -6,6 +6,10 @@ import os
 app = Flask(__name__, static_url_path='/powerlifting/static')
 app.secret_key = b'\xf6\x91\nKp\x13\xd4\xf3$!\xa2\x00\xf6\xd4\xa6\x0cB\x89B>\x1b\xf8'
 
+# Configure ProxyFix for correct URL generation behind Nginx
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 # Ensure instance path exists
 os.makedirs(app.instance_path, exist_ok=True)
 # Use absolute path to instance folder for database
