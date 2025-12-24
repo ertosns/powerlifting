@@ -86,7 +86,15 @@
             {% endif %}
 
             <h2 class="mt-5">Records Plot</h2>
-            <a href="/powerlifting/download" class="btn btn-success mb-3">Download</a>
+            <div class="d-flex gap-2 mb-3">
+                <a href="/powerlifting/download" class="btn btn-success">Download</a>
+                <button id="copyShareLink" class="btn btn-primary" onclick="copyShareLink()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-share" viewBox="0 0 16 16" style="margin-right: 5px;">
+                        <path d="M13.5 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.5 2.5 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5m-8.5 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m11 5.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"/>
+                    </svg>
+                    Copy Share Link
+                </button>
+            </div>
             {% if plot_url %}
             <img src="data:image/png;base64,{{ plot_url }}" class="img-fluid" />
             {% else %}
@@ -97,5 +105,27 @@
             <p>{{ analysis or "No analysis yet." }}</p>
         </div>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            function copyShareLink() {
+                const shareUrl = "{{ share_url }}";
+                navigator.clipboard.writeText(shareUrl).then(function() {
+                    // Change button text to show success
+                    const btn = document.getElementById('copyShareLink');
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check2" viewBox="0 0 16 16" style="margin-right: 5px;"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0"/></svg>Copied!';
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-success');
+                    
+                    // Reset button after 2 seconds
+                    setTimeout(function() {
+                        btn.innerHTML = originalHTML;
+                        btn.classList.remove('btn-success');
+                        btn.classList.add('btn-primary');
+                    }, 2000);
+                }, function(err) {
+                    alert('Failed to copy link: ' + err);
+                });
+            }
+        </script>
 </body>
 </html>

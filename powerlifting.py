@@ -5,12 +5,14 @@ from io import BytesIO
 import base64
 import pandas as pd
 import os
+import secrets
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_migrate import Migrate
 from models import db, app
 from io import BytesIO
+from total_curve_plot import make_total_curve_plot
 
 migrate = Migrate(app, db)
 
@@ -302,7 +304,56 @@ def profile():
     df = pd.DataFrame(records_with_analysis)
     df.sort_values(by='datetime', inplace=True)
     interpolated_records = df.interpolate().to_dict('records')
-    return render_template('profile.html', records=interpolated_records, plot_url=plot_url, analysis=analysis, user=current_user)
+    
+    # Generate share token for the user
+    share_token = get_or_create_share_token(current_user)
+    share_url = url_for('share_plot', token=share_token, _external=True)
+    
+    return render_template('profile.html', records=interpolated_records, plot_url=plot_url, analysis=analysis, user=current_user, share_url=share_url)
+
+def get_or_create_share_token(user):
+    """Generate or retrieve a unique share token for the user"""
+    if not user.share_token:
+        user.share_token = secrets.token_urlsafe(32)
+        db.session.commit()
+    return user.share_token
+
+@app.route('/powerlifting/share/<token>')
+def share_plot(token):
+    """Public route to view a shared plot"""
+    user = User.query.filter_by(share_token=token).first_or_404()
+    records = Record.query.filter_by(user_id=user.id).order_by(Record.id).all()
+    
+    if not records:
+        return render_template('share.html', plot_url=None, error="No records available to display.")
+    
+    recs = []
+    for r in records:
+        if r.is_target == 'target':
+            while len(recs) > 1:
+                interpolate_date = add_days_to_date(recs[-1]['datetime'], 30)
+                if interpolate_date < r.datetime:
+                    recs += [{'datetime': interpolate_date}]
+                else:
+                    break
+        dict_rec = {
+            'datetime': r.datetime,
+            'deadlift': r.deadlift,
+            'squat': r.squat,
+            'bench': r.bench,
+            'weight': r.weight,
+            'gender': r.gender
+        }
+        recs += [dict_rec]
+    
+    df = pd.DataFrame(recs)
+    df = df.interpolate()
+    df.sort_values(by='datetime', inplace=True)
+    
+    # Use make_total_curve_plot which doesn't include weight or wilks
+    plot_url = make_total_curve_plot(df)
+    
+    return render_template('share.html', plot_url=plot_url, error=None)
 
 @app.route('/powerlifting/delete_record/<int:record_id>', methods=['POST'])
 def delete_record(record_id):

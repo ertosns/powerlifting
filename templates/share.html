@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Shared Powerlifting Progress</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+        <style>
+            body {
+                background-color: #f8f9fa;
+            }
+            .plot-container {
+                background-color: white;
+                border-radius: 10px;
+                padding: 20px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin-top: 30px;
+            }
+        </style>
+    </head>
+    <body>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container">
+                <a class="navbar-brand" href="#">Powerlifting Progress</a>
+            </div>
+        </nav>
+        <div class="container">
+            <div class="plot-container">
+                <h2 class="mb-4 text-center">Powerlifting Total Progress</h2>
+                {% if error %}
+                <div class="alert alert-warning text-center">
+                    {{ error }}
+                </div>
+                {% elif plot_url %}
+                <div class="text-center">
+                    <img src="data:image/png;base64,{{ plot_url }}" class="img-fluid" alt="Powerlifting Total Progress" />
+                </div>
+                <p class="text-center mt-3 text-muted">This shows the total (squat + bench + deadlift) progress over time.</p>
+                {% else %}
+                <div class="alert alert-info text-center">
+                    No plot data available.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    </body>
+</html>
