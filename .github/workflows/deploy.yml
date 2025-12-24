@@ -35,6 +35,8 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           source: "deploy.tar.gz"
           target: "/tmp/"
+          debug: true
+          strip_components: 0
 
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.0
