@@ -71,38 +71,6 @@ jobs:
             sudo mkdir -p $DATA_DIR
             sudo mkdir -p $INSTANCE_DIR
             
-            # --- Systemd Migration (Stop & Copy) ---
-            SYSTEMD_SERVICE_EXISTS=false
-            if systemctl list-units --full -all | grep -Fq 'powerlifting.service'; then
-                echo "Found existing systemd service. Starting migration..."
-                SYSTEMD_SERVICE_EXISTS=true
-                
-                # Get old working directory
-                OLD_WORKDIR=$(systemctl show -p WorkingDirectory powerlifting.service | cut -d= -f2)
-                echo "Old working directory: $OLD_WORKDIR"
-                
-                echo "Stopping and disabling systemd service..."
-                sudo systemctl stop powerlifting || true
-                sudo systemctl disable powerlifting || true
-                
-                # Migrate database
-                # Check for DB in old root (common for previous setup) or old instance folder
-                if [ ! -f "$INSTANCE_DIR/powerlifting_b7.db" ]; then
-                    if [ -f "$OLD_WORKDIR/powerlifting_b7.db" ]; then
-                        echo "Migrating database from $OLD_WORKDIR/powerlifting_b7.db to $INSTANCE_DIR/"
-                        sudo cp "$OLD_WORKDIR/powerlifting_b7.db" "$INSTANCE_DIR/"
-                    elif [ -f "$OLD_WORKDIR/instance/powerlifting_b7.db" ]; then
-                        echo "Migrating database from $OLD_WORKDIR/instance/powerlifting_b7.db to $INSTANCE_DIR/"
-                        sudo cp "$OLD_WORKDIR/instance/powerlifting_b7.db" "$INSTANCE_DIR/"
-                    else
-                        echo "Warning: Could not find old database to migrate."
-                    fi
-                else
-                    echo "Database already exists in target location. Skipping migration."
-                fi
-            fi
-            # -----------------------------------
-
             # Backup existing data if it exists
             if [ -f "$INSTANCE_DIR/powerlifting_b7.db" ]; then
               echo "Backing up database..."
@@ -137,46 +105,6 @@ jobs:
             GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }}
             EOF
             sudo docker compose up -d --build
-            
-            # Wait for container to be ready
-            echo "Waiting for container to initialize..."
-            sleep 10
-            
-            # --- Verification & Cleanup ---
-            echo "Verifying database records..."
-            # Run python script inside container to count records
-            RECORD_OUTPUT=$(sudo docker exec powerlifting-app python -c "from models import app, db, Record; \
-            with app.app_context(): \
-                try: \
-                    print(f'COUNT:{Record.query.count()}') \
-                except Exception as e: \
-                    print(f'Error: {e}') \
-                    print('COUNT:0')")
-            
-            RECORD_COUNT=$(echo "$RECORD_OUTPUT" | grep "COUNT:" | cut -d: -f2 | tr -d '[:space:]')
-            
-            echo "Container reported record count: $RECORD_COUNT"
-            
-            # Check if RECORD_COUNT is a number and greater than 0
-            if [[ "$RECORD_COUNT" =~ ^[0-9]+$ ]] && [ "$RECORD_COUNT" -gt 0 ]; then
-                echo "Data verification successful. Found $RECORD_COUNT records."
-                
-                if [ "$SYSTEMD_SERVICE_EXISTS" = true ]; then
-                    echo "Removing old systemd service file..."
-                    sudo rm -f /etc/systemd/system/powerlifting.service
-                    sudo systemctl daemon-reload
-                    sudo systemctl reset-failed
-                    echo "Systemd cleanup complete."
-                fi
-            else
-                echo "WARNING: Verification failed or no records found (Count: $RECORD_COUNT)."
-                echo "Skipping systemd service removal to allow rollback if needed."
-                echo "You may need to check logs: sudo docker logs powerlifting-app"
-                if [ "$SYSTEMD_SERVICE_EXISTS" = true ]; then
-                     echo "To revert to systemd: sudo systemctl start powerlifting"
-                fi
-                exit 1
-            fi
             
             # Clean up old images
             sudo docker image prune -f
