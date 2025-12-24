@@ -24,8 +24,8 @@ with app.app_context():
 login_manager = LoginManager(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
-GOOGLE_ID = ''
-GOOGLE_SECRET = ''
+GOOGLE_ID = os.environ.get('GOOGLE_ID', '')
+GOOGLE_SECRET = os.environ.get('GOOGLE_SECRET', '')
 google_bp = make_google_blueprint(client_id=GOOGLE_ID,
                                   client_secret=GOOGLE_SECRET,
 				scope=[
