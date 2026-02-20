@@ -302,8 +302,11 @@ def profile():
         table_html = ""
         plot_url = ""
     df = pd.DataFrame(records_with_analysis)
-    df.sort_values(by='datetime', inplace=True)
-    interpolated_records = df.interpolate().to_dict('records')
+    if not df.empty:
+        df.sort_values(by='datetime', inplace=True)
+        interpolated_records = df.interpolate().to_dict('records')
+    else:
+        interpolated_records = []
     
     # Generate share token for the user
     share_token = get_or_create_share_token(current_user)
