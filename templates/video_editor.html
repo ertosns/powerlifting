@@ -1,0 +1,415 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Video Editor - Powerlifting</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background: #0a0a0f;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .navbar { border-bottom: 2px solid #1a1a2e; }
+        .card-dark {
+            background: #12121a;
+            border: 1px solid #2a2a3e;
+            border-radius: 12px;
+        }
+        .section-title {
+            color: #00ff88;
+            font-weight: 700;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .section-title::before {
+            content: "▸ ";
+            color: #ff0088;
+        }
+
+        /* Theme selector cards */
+        .theme-card {
+            background: #1a1a2e;
+            border: 2px solid #2a2a3e;
+            border-radius: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            min-height: 180px;
+        }
+        .theme-card:hover {
+            border-color: #00ff88;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 255, 136, 0.15);
+        }
+        .theme-card.selected {
+            border-color: #00ff88;
+            background: #1a2a1e;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+        }
+        .theme-card input[type="radio"] { display: none; }
+        .theme-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin: 8px 0 4px;
+        }
+        .theme-desc {
+            font-size: 0.8rem;
+            color: #888;
+        }
+        .theme-preview {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 0 auto 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }
+
+        /* DBZ theme preview */
+        .preview-dbz { background: linear-gradient(135deg, #ff8c00, #ffd700); }
+        .preview-berserk { background: linear-gradient(135deg, #8b0000, #ff3232); }
+        .preview-solo_leveling { background: linear-gradient(135deg, #4b0082, #00bfff); }
+        .preview-retro_rpg { background: linear-gradient(135deg, #006400, #ffd700); }
+        .preview-hybrid { background: linear-gradient(135deg, #00ffb4, #ff00c8); }
+
+        /* Rep timestamp rows */
+        .rep-row {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .rep-row .rep-label {
+            font-weight: 700;
+            color: #00ff88;
+            min-width: 70px;
+        }
+        .rep-row input {
+            background: #0a0a0f;
+            border: 1px solid #3a3a4e;
+            color: #e0e0e0;
+            border-radius: 6px;
+            padding: 6px 10px;
+            width: 60px;
+            text-align: center;
+        }
+        .rep-row input:focus {
+            border-color: #00ff88;
+            outline: none;
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.3);
+        }
+        .time-separator {
+            color: #666;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        /* Audio mode cards */
+        .audio-card {
+            background: #1a1a2e;
+            border: 2px solid #2a2a3e;
+            border-radius: 10px;
+            padding: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .audio-card:hover { border-color: #00bfff; }
+        .audio-card.selected {
+            border-color: #00bfff;
+            background: #1a1e2e;
+        }
+        .audio-card input[type="radio"] { display: none; }
+
+        .form-select, .form-control {
+            background: #0a0a0f;
+            border: 1px solid #3a3a4e;
+            color: #e0e0e0;
+        }
+        .form-select:focus, .form-control:focus {
+            background: #0a0a0f;
+            border-color: #00ff88;
+            color: #e0e0e0;
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+        }
+
+        .btn-neon {
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            color: #000;
+            font-weight: 700;
+            border: none;
+            padding: 12px 40px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+        }
+        .btn-neon:hover {
+            background: linear-gradient(135deg, #00cc6a, #009950);
+            color: #000;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.3);
+        }
+
+        .pr-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: #1a1a2e;
+            border: 2px solid #2a2a3e;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .pr-toggle:has(input:checked) {
+            border-color: #ffd700;
+            background: #2a2a1e;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
+        }
+        .pr-toggle .pr-icon { font-size: 1.5rem; }
+
+        .form-check-input:checked {
+            background-color: #00ff88;
+            border-color: #00ff88;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/powerlifting/profile">
+                <img src="{{ url_for('static', filename='logo_64.png') }}" alt="Logo" height="40" class="d-inline-block align-text-top me-2">
+                Powerlifting Tracker
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/powerlifting/profile">Home</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="/powerlifting/video/create">Video Editor</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/powerlifting/video/list">My Videos</a></li>
+                    {% if user and user.email != 'guest' %}
+                    <li class="nav-item"><a class="nav-link" href="/powerlifting/logout">Logout</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <h2 class="mb-2" style="color: #00ff88; font-weight: 800;">
+            <span style="color: #ff0088;">&#9876;</span> VIDEO EDITOR
+        </h2>
+        <p class="text-secondary mb-4">Transform your lifting footage into anime-styled content</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form method="post" enctype="multipart/form-data" id="editorForm">
+
+            <!-- Section 1: Video Upload -->
+            <div class="card-dark p-4 mb-4">
+                <div class="section-title">Upload Video</div>
+                <div class="mb-3">
+                    <input type="file" class="form-control" name="video" accept=".mp4,.mov,.avi,.mkv,.webm" required
+                           style="padding: 12px;">
+                    <div class="form-text text-secondary">Accepted: MP4, MOV, AVI, MKV, WEBM (max 500MB)</div>
+                </div>
+            </div>
+
+            <!-- Section 2: Lift Metadata -->
+            <div class="card-dark p-4 mb-4">
+                <div class="section-title">Lift Details</div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Lift Type</label>
+                        <select name="lift_type" class="form-select" required>
+                            <option value="squat">Squat</option>
+                            <option value="bench">Bench Press</option>
+                            <option value="deadlift" selected>Deadlift</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Weight (kg)</label>
+                        <input type="number" name="weight_kg" class="form-control" step="0.5" min="0" required placeholder="e.g. 180">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Total Reps</label>
+                        <input type="number" name="total_reps" id="totalReps" class="form-control" min="1" max="20" value="3" required>
+                    </div>
+                </div>
+                <!-- Optional: Link to existing record -->
+                {% if records %}
+                <div class="mt-3">
+                    <label class="form-label text-secondary">Link to existing record (optional)</label>
+                    <select name="record_id" class="form-select">
+                        <option value="">— None —</option>
+                        {% for r in records %}
+                        <option value="{{ r.id }}">{{ r.datetime }} — S:{{ "%.0f"|format(r.squat) }} B:{{ "%.0f"|format(r.bench) }} D:{{ "%.0f"|format(r.deadlift) }}kg</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <!-- PR Toggle -->
+                <div class="mt-3">
+                    <label class="pr-toggle">
+                        <input type="checkbox" name="is_pr" class="form-check-input">
+                        <span class="pr-icon">&#127942;</span>
+                        <div>
+                            <strong>This is a Personal Record!</strong>
+                            <div class="text-secondary" style="font-size: 0.85rem;">Triggers a special PR alert animation in the video</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Section 3: Rep Timestamps -->
+            <div class="card-dark p-4 mb-4">
+                <div class="section-title">Rep Timestamps</div>
+                <p class="text-secondary mb-3" style="font-size: 0.9rem;">
+                    Mark when each rep starts and ends. The progress bar will fill during each rep window.
+                </p>
+                <div id="repTimestamps"></div>
+            </div>
+
+            <!-- Section 4: Theme Selector -->
+            <div class="card-dark p-4 mb-4">
+                <div class="section-title">Choose Theme</div>
+                <div class="row g-3" id="themeSelector">
+                    {% for t in themes %}
+                    <div class="col-6 col-md-4 col-lg">
+                        <label class="theme-card d-block {% if loop.first %}selected{% endif %}" data-theme="{{ t.name }}">
+                            <input type="radio" name="theme_name" value="{{ t.name }}" {% if loop.first %}checked{% endif %}>
+                            <div class="theme-preview preview-{{ t.name }}">
+                                {% if t.name == 'dbz' %}&#9889;
+                                {% elif t.name == 'berserk' %}&#9876;
+                                {% elif t.name == 'solo_leveling' %}&#128081;
+                                {% elif t.name == 'retro_rpg' %}&#127918;
+                                {% elif t.name == 'hybrid' %}&#128171;
+                                {% endif %}
+                            </div>
+                            <div class="theme-name">{{ t.display_name }}</div>
+                            <div class="theme-desc">{{ t.description }}</div>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Section 5: Audio Mode -->
+            <div class="card-dark p-4 mb-4">
+                <div class="section-title">Audio</div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="audio-card d-block selected" data-audio="original_sfx">
+                            <input type="radio" name="audio_mode" value="original_sfx" checked>
+                            <div class="fw-bold">&#127925; Original + SFX</div>
+                            <div class="text-secondary" style="font-size: 0.85rem;">Keep gym audio, add sound effects on rep complete &amp; PR</div>
+                        </label>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="audio-card d-block" data-audio="full_replace">
+                            <input type="radio" name="audio_mode" value="full_replace">
+                            <div class="fw-bold">&#127911; Full Replace</div>
+                            <div class="text-secondary" style="font-size: 0.85rem;">Replace all audio with SFX only (no original sound)</div>
+                        </label>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="audio-card d-block" data-audio="keep">
+                            <input type="radio" name="audio_mode" value="keep">
+                            <div class="fw-bold">&#128263; Keep As-Is</div>
+                            <div class="text-secondary" style="font-size: 0.85rem;">No audio changes, original sound only</div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit -->
+            <div class="text-center mt-4 mb-5">
+                <button type="submit" class="btn btn-neon" id="submitBtn">
+                    &#9889; PROCESS VIDEO
+                </button>
+                <div class="text-secondary mt-2" style="font-size: 0.85rem;">
+                    Processing may take several minutes depending on video length
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Dynamic rep timestamp rows
+        const totalRepsInput = document.getElementById('totalReps');
+        const repContainer = document.getElementById('repTimestamps');
+
+        function buildRepRows() {
+            const n = parseInt(totalRepsInput.value) || 1;
+            repContainer.innerHTML = '';
+            for (let i = 0; i < n; i++) {
+                const row = document.createElement('div');
+                row.className = 'rep-row';
+                row.innerHTML = `
+                    <span class="rep-label">Rep ${i + 1}</span>
+                    <span class="text-secondary">Start</span>
+                    <input type="number" name="rep_${i}_start_min" min="0" max="59" value="0" placeholder="m">
+                    <span class="time-separator">:</span>
+                    <input type="number" name="rep_${i}_start_sec" min="0" max="59" value="0" placeholder="s">
+                    <span class="text-secondary ms-3">End</span>
+                    <input type="number" name="rep_${i}_end_min" min="0" max="59" value="0" placeholder="m">
+                    <span class="time-separator">:</span>
+                    <input type="number" name="rep_${i}_end_sec" min="0" max="59" value="0" placeholder="s">
+                `;
+                repContainer.appendChild(row);
+            }
+        }
+
+        totalRepsInput.addEventListener('change', buildRepRows);
+        totalRepsInput.addEventListener('input', buildRepRows);
+        buildRepRows();
+
+        // Theme card selection
+        document.querySelectorAll('.theme-card').forEach(card => {
+            card.addEventListener('click', function() {
+                document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+
+        // Audio card selection
+        document.querySelectorAll('.audio-card').forEach(card => {
+            card.addEventListener('click', function() {
+                document.querySelectorAll('.audio-card').forEach(c => c.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+
+        // Submit handling
+        document.getElementById('editorForm').addEventListener('submit', function() {
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerHTML = '&#8987; UPLOADING...';
+        });
+    </script>
+</body>
+</html>

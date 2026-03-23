@@ -6,7 +6,7 @@ Run this to verify the archive system is working correctly
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from powerlifting import app, db, User, Record, MonthlyArchive, archive_monthly_records, get_current_month
 from datetime import datetime, timedelta

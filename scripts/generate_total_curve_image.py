@@ -1,13 +1,15 @@
 import os
+import sys
 import pandas as pd
 import base64
-from total_curve_plot import make_total_curve_plot
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.total_curve_plot import make_total_curve_plot
 from sqlalchemy import create_engine
 
 def generate_total_curve_image():
     # Load real data from SQLite DB
     # Use the same database path as models.py (in instance folder)
-    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'powerlifting_b7.db')
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'instance', 'powerlifting_b7.db')
     engine = create_engine(f'sqlite:///{db_path}')
     df = pd.read_sql('SELECT id, datetime, deadlift, squat, bench FROM Record', engine)
     # Parse date and sort strictly ascending

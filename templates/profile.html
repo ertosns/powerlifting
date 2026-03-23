@@ -23,6 +23,12 @@
                         <li class="nav-item">
                             <a class="nav-link" href="/powerlifting/profile">Home</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/powerlifting/video/create">Video Editor</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/powerlifting/video/list">My Videos</a>
+                        </li>
                         {% if user and user.email != 'guest' %}
                         <li class="nav-item">
                             <a class="nav-link" href="/powerlifting/profile">Welcome ({{ user.email }})</a>

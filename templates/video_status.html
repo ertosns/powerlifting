@@ -1,0 +1,325 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Processing Video - Powerlifting</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background: #0a0a0f;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .navbar { border-bottom: 2px solid #1a1a2e; }
+        .status-container {
+            max-width: 600px;
+            margin: 60px auto;
+            text-align: center;
+        }
+        .status-card {
+            background: #12121a;
+            border: 1px solid #2a2a3e;
+            border-radius: 16px;
+            padding: 40px 30px;
+        }
+
+        /* Anime loading animation */
+        .loader {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+        }
+        .loader .ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 4px solid transparent;
+        }
+        .loader .ring:nth-child(1) {
+            border-top-color: #00ff88;
+            animation: spin 1.5s linear infinite;
+        }
+        .loader .ring:nth-child(2) {
+            border-right-color: #ff0088;
+            animation: spin 2s linear infinite reverse;
+            width: 85%;
+            height: 85%;
+            top: 7.5%;
+            left: 7.5%;
+        }
+        .loader .ring:nth-child(3) {
+            border-bottom-color: #00bfff;
+            animation: spin 1s linear infinite;
+            width: 70%;
+            height: 70%;
+            top: 15%;
+            left: 15%;
+        }
+        .loader .center-icon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+        }
+
+        .status-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+        }
+        .status-pending { color: #ffd700; }
+        .status-processing { color: #00bfff; }
+        .status-complete { color: #00ff88; }
+        .status-failed { color: #ff3232; }
+
+        .status-sub {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .btn-neon {
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            color: #000;
+            font-weight: 700;
+            border: none;
+            padding: 12px 40px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .btn-neon:hover {
+            background: linear-gradient(135deg, #00cc6a, #009950);
+            color: #000;
+            transform: translateY(-2px);
+        }
+
+        .job-details {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .job-details .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #2a2a3e;
+        }
+        .job-details .detail-row:last-child { border: none; }
+        .detail-label { color: #888; }
+        .detail-value { color: #00ff88; font-weight: 600; }
+
+        .error-box {
+            background: #2a1515;
+            border: 1px solid #ff3232;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            color: #ff6666;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        /* Success animation */
+        .success-checkmark {
+            font-size: 64px;
+            animation: bounceIn 0.6s ease;
+        }
+        @keyframes bounceIn {
+            0% { transform: scale(0); opacity: 0; }
+            60% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/powerlifting/profile">
+                <img src="{{ url_for('static', filename='logo_64.png') }}" alt="Logo" height="40" class="d-inline-block align-text-top me-2">
+                Powerlifting Tracker
+            </a>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/powerlifting/profile">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/powerlifting/video/create">Video Editor</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/powerlifting/video/list">My Videos</a></li>
+                    {% if user and user.email != 'guest' %}
+                    <li class="nav-item"><a class="nav-link" href="/powerlifting/logout">Logout</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="status-container">
+        <div class="status-card">
+            <!-- Loading spinner (shown while pending/processing) -->
+            <div id="loadingSpinner" style="{% if job.status in ['complete', 'failed'] %}display:none{% endif %}">
+                <div class="loader">
+                    <div class="ring"></div>
+                    <div class="ring"></div>
+                    <div class="ring"></div>
+                    <div class="center-icon">&#9889;</div>
+                </div>
+            </div>
+
+            <!-- Success icon (shown when complete) -->
+            <div id="successIcon" style="{% if job.status != 'complete' %}display:none{% endif %}">
+                <div class="success-checkmark">&#9989;</div>
+            </div>
+
+            <!-- Failed icon -->
+            <div id="failedIcon" style="{% if job.status != 'failed' %}display:none{% endif %}">
+                <div class="success-checkmark">&#10060;</div>
+            </div>
+
+            <div id="statusText" class="status-text status-{{ job.status }}">
+                {% if job.status == 'pending' %}QUEUED
+                {% elif job.status == 'processing' %}PROCESSING
+                {% elif job.status == 'complete' %}COMPLETE
+                {% elif job.status == 'failed' %}FAILED
+                {% endif %}
+            </div>
+
+            <div id="statusSub" class="status-sub">
+                {% if job.status == 'pending' %}Your video is queued for processing...
+                {% elif job.status == 'processing' %}Applying {{ job.theme_name | upper }} theme overlays...
+                {% elif job.status == 'complete' %}Your video is ready to download!
+                {% elif job.status == 'failed' %}Something went wrong during processing.
+                {% endif %}
+            </div>
+
+            <!-- Download button (shown when complete) -->
+            <div id="downloadSection" style="{% if job.status != 'complete' %}display:none{% endif %}">
+                <a href="{{ url_for('video_download', job_id=job.id) }}" class="btn-neon">
+                    &#11015; DOWNLOAD VIDEO
+                </a>
+            </div>
+
+            <!-- Error message -->
+            {% if job.error_message %}
+            <div id="errorBox" class="error-box">
+                <strong>Error:</strong> {{ job.error_message }}
+            </div>
+            {% else %}
+            <div id="errorBox" class="error-box" style="display:none"></div>
+            {% endif %}
+
+            <!-- Job details -->
+            <div class="job-details">
+                <div class="detail-row">
+                    <span class="detail-label">Lift</span>
+                    <span class="detail-value">{{ job.lift_type | upper }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Weight</span>
+                    <span class="detail-value">{{ job.weight_kg }}kg</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Reps</span>
+                    <span class="detail-value">{{ job.total_reps }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Theme</span>
+                    <span class="detail-value">{{ job.theme_name | upper }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">PR</span>
+                    <span class="detail-value">{{ "YES &#127942;" | safe if job.is_pr else "No" }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Created</span>
+                    <span class="detail-value" style="font-size:0.85rem">{{ job.created_at }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <a href="{{ url_for('video_list') }}" class="text-secondary text-decoration-none">&#8592; Back to My Videos</a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Poll for status updates
+        const jobId = {{ job.id }};
+        let currentStatus = "{{ job.status }}";
+
+        function pollStatus() {
+            if (currentStatus === 'complete' || currentStatus === 'failed') return;
+
+            fetch(`/powerlifting/video/status/${jobId}/json`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status !== currentStatus) {
+                        currentStatus = data.status;
+                        updateUI(data);
+                    }
+                    if (currentStatus !== 'complete' && currentStatus !== 'failed') {
+                        setTimeout(pollStatus, 3000);
+                    }
+                })
+                .catch(() => setTimeout(pollStatus, 5000));
+        }
+
+        function updateUI(data) {
+            const statusText = document.getElementById('statusText');
+            const statusSub = document.getElementById('statusSub');
+            const spinner = document.getElementById('loadingSpinner');
+            const successIcon = document.getElementById('successIcon');
+            const failedIcon = document.getElementById('failedIcon');
+            const downloadSection = document.getElementById('downloadSection');
+            const errorBox = document.getElementById('errorBox');
+
+            // Remove old status classes
+            statusText.className = 'status-text status-' + data.status;
+
+            if (data.status === 'processing') {
+                statusText.textContent = 'PROCESSING';
+                statusSub.textContent = 'Applying theme overlays...';
+            } else if (data.status === 'complete') {
+                spinner.style.display = 'none';
+                successIcon.style.display = 'block';
+                statusText.textContent = 'COMPLETE';
+                statusSub.textContent = 'Your video is ready to download!';
+                downloadSection.style.display = 'block';
+            } else if (data.status === 'failed') {
+                spinner.style.display = 'none';
+                failedIcon.style.display = 'block';
+                statusText.textContent = 'FAILED';
+                statusSub.textContent = 'Something went wrong.';
+                if (data.error_message) {
+                    errorBox.style.display = 'block';
+                    errorBox.innerHTML = '<strong>Error:</strong> ' + data.error_message;
+                }
+            }
+        }
+
+        // Start polling if not terminal
+        if (currentStatus !== 'complete' && currentStatus !== 'failed') {
+            setTimeout(pollStatus, 3000);
+        }
+    </script>
+</body>
+</html>

@@ -3,3 +3,7 @@ __pycache__
 instance
 flycheck_powerlifting.py
 migrations
+venv/
+data/uploads/
+data/outputs/
+*.pyc

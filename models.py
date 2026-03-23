@@ -57,3 +57,26 @@ class Record(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
     user = db.relationship('User', backref=db.backref('records', lazy=True))
+
+
+class VideoJob(db.Model):
+    """Tracks video editing jobs submitted by users."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, processing, complete, failed
+    input_filename = db.Column(db.String(256), nullable=False)
+    output_filename = db.Column(db.String(256), nullable=True)
+    lift_type = db.Column(db.String(20), nullable=False)       # squat, bench, deadlift
+    weight_kg = db.Column(db.Float, nullable=False)
+    total_reps = db.Column(db.Integer, nullable=False)
+    rep_timestamps_json = db.Column(db.Text, nullable=False)   # JSON: [{"start_sec": 1.0, "end_sec": 3.5}, ...]
+    theme_name = db.Column(db.String(50), nullable=False)
+    audio_mode = db.Column(db.String(20), nullable=False, default='original_sfx')  # original_sfx, full_replace, keep
+    is_pr = db.Column(db.Boolean, nullable=False, default=False)
+    record_id = db.Column(db.Integer, db.ForeignKey('record.id'), nullable=True)  # Optional link to a Record
+    created_at = db.Column(db.String, nullable=False)
+    completed_at = db.Column(db.String, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    celery_task_id = db.Column(db.String(256), nullable=True)
+
+    user = db.relationship('User', backref=db.backref('video_jobs', lazy=True))

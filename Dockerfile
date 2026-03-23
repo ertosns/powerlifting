@@ -7,6 +7,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    ffmpeg \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -19,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/instance /app/data /app/static
+RUN mkdir -p /app/instance /app/data /app/static /app/data/uploads /app/data/outputs
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

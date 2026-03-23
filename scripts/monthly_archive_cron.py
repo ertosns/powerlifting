@@ -14,8 +14,8 @@ import os
 import sys
 from datetime import datetime
 
-# Add the parent directory to the path so we can import the app
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the repo root to the path so we can import the app
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from powerlifting import app, db, check_and_archive
 

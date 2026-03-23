@@ -12,6 +12,36 @@ services:
       - FLASK_ENV=production
       - GOOGLE_ID=${GOOGLE_ID}
       - GOOGLE_SECRET=${GOOGLE_SECRET}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - powerlifting-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: powerlifting-redis
+    restart: unless-stopped
+    networks:
+      - powerlifting-network
+
+  celery_worker:
+    build: .
+    container_name: powerlifting-celery
+    restart: unless-stopped
+    command: celery -A video.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./instance:/app/instance
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=production
+      - GOOGLE_ID=${GOOGLE_ID}
+      - GOOGLE_SECRET=${GOOGLE_SECRET}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
     networks:
       - powerlifting-network
 

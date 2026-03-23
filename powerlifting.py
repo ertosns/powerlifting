@@ -12,11 +12,14 @@ from flask_dance.contrib.google import make_google_blueprint, google
 from flask_migrate import Migrate
 from models import db, app
 from io import BytesIO
-from total_curve_plot import make_total_curve_plot
+from utils.total_curve_plot import make_total_curve_plot
+
+# Configure max upload size: 500MB for video files
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
 migrate = Migrate(app, db)
 
-from models import User, Record
+from models import User, Record, VideoJob
 
 with app.app_context():
         db.create_all()
@@ -412,6 +415,253 @@ def get_records_from_database():
         df = df.interpolate()
     ##
     return make_download_plot(df)
+
+# ---------------------------------------------------------------------------
+# Video Editor Routes
+# ---------------------------------------------------------------------------
+
+UPLOAD_DIR = os.path.join('data', 'uploads')
+OUTPUT_DIR = os.path.join('data', 'outputs')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm'}
+
+def allowed_video_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
+
+
+def _process_video_sync(job):
+    """Process a video job synchronously (fallback when Celery/Redis unavailable)."""
+    import json as json_module
+    from datetime import datetime as dt
+    from video.processor import VideoConfig, RepTimestamp, process_video
+
+    job.status = 'processing'
+    db.session.commit()
+
+    timestamps_raw = json_module.loads(job.rep_timestamps_json)
+    rep_timestamps = [
+        RepTimestamp(start_sec=t['start_sec'], end_sec=t['end_sec'])
+        for t in timestamps_raw
+    ]
+
+    # Gather user history
+    records = Record.query.filter_by(user_id=job.user_id).order_by(Record.id).all()
+    history_data = {}
+    wilks_val = 0.0
+    analysis = ""
+    if records:
+        dates, totals, squats, benches, deadlifts = [], [], [], [], []
+        for r in records:
+            if r.is_target == 'target':
+                continue
+            dates.append(r.datetime)
+            squats.append(r.squat)
+            benches.append(r.bench)
+            deadlifts.append(r.deadlift)
+            totals.append(r.squat + r.bench + r.deadlift)
+        if dates:
+            history_data = {'dates': dates, 'totals': totals, 'squats': squats,
+                            'benches': benches, 'deadlifts': deadlifts}
+        last = records[-1]
+        row = {'deadlift': last.deadlift, 'squat': last.squat, 'bench': last.bench,
+               'weight': last.weight, 'gender': last.gender}
+        wilks_val = wilks_score(row)
+        analysis = compute_analysis(last)
+
+    input_path = os.path.join(UPLOAD_DIR, job.input_filename)
+    output_filename = f"processed_{job.id}_{job.theme_name}.mp4"
+    output_path = os.path.join(OUTPUT_DIR, output_filename)
+
+    config = VideoConfig(
+        input_path=input_path,
+        output_path=output_path,
+        lift_type=job.lift_type,
+        weight_kg=job.weight_kg,
+        total_reps=job.total_reps,
+        rep_timestamps=rep_timestamps,
+        theme_name=job.theme_name,
+        audio_mode=job.audio_mode,
+        is_pr=job.is_pr,
+        wilks_score=wilks_val,
+        analysis_text=analysis,
+        history_data=history_data,
+    )
+
+    process_video(config)
+
+    job.status = 'complete'
+    job.output_filename = output_filename
+    job.completed_at = dt.utcnow().isoformat()
+    db.session.commit()
+
+
+@app.route('/powerlifting/video/create', methods=['GET', 'POST'])
+@login_required
+def video_create():
+    """Upload a video and configure the anime overlay editing."""
+    from themes import list_themes, THEMES
+    # Import theme modules to ensure they're registered
+    import themes.dbz
+    import themes.berserk
+    import themes.solo_leveling
+    import themes.retro_rpg
+    import themes.hybrid
+
+    if request.method == 'POST':
+        import json as json_module
+        from datetime import datetime
+        from werkzeug.utils import secure_filename
+
+        # Validate video file
+        if 'video' not in request.files:
+            flash('No video file uploaded.', 'danger')
+            return redirect(url_for('video_create'))
+
+        video_file = request.files['video']
+        if video_file.filename == '':
+            flash('No file selected.', 'danger')
+            return redirect(url_for('video_create'))
+
+        if not allowed_video_file(video_file.filename):
+            flash('Invalid file type. Allowed: mp4, mov, avi, mkv, webm', 'danger')
+            return redirect(url_for('video_create'))
+
+        # Save uploaded file
+        original_ext = video_file.filename.rsplit('.', 1)[1].lower()
+        safe_name = secure_filename(video_file.filename)
+        timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+        input_filename = f"{current_user.id}_{timestamp}_{safe_name}"
+        input_path = os.path.join(UPLOAD_DIR, input_filename)
+        video_file.save(input_path)
+
+        # Parse form data
+        lift_type = request.form.get('lift_type', 'deadlift')
+        weight_kg = float(request.form.get('weight_kg', 0))
+        total_reps = int(request.form.get('total_reps', 1))
+        theme_name = request.form.get('theme_name', 'dbz')
+        audio_mode = request.form.get('audio_mode', 'original_sfx')
+        is_pr = request.form.get('is_pr') == 'on'
+        record_id = request.form.get('record_id')
+        record_id = int(record_id) if record_id and record_id != '' else None
+
+        # Parse rep timestamps
+        rep_timestamps = []
+        for i in range(total_reps):
+            start_min = int(request.form.get(f'rep_{i}_start_min', 0))
+            start_sec = int(request.form.get(f'rep_{i}_start_sec', 0))
+            end_min = int(request.form.get(f'rep_{i}_end_min', 0))
+            end_sec = int(request.form.get(f'rep_{i}_end_sec', 0))
+            rep_timestamps.append({
+                'start_sec': start_min * 60 + start_sec,
+                'end_sec': end_min * 60 + end_sec,
+            })
+
+        # Create VideoJob
+        job = VideoJob(
+            user_id=current_user.id,
+            status='pending',
+            input_filename=input_filename,
+            lift_type=lift_type,
+            weight_kg=weight_kg,
+            total_reps=total_reps,
+            rep_timestamps_json=json_module.dumps(rep_timestamps),
+            theme_name=theme_name,
+            audio_mode=audio_mode,
+            is_pr=is_pr,
+            record_id=record_id,
+            created_at=datetime.utcnow().isoformat(),
+        )
+        db.session.add(job)
+        db.session.commit()
+
+        # Try Celery first, fall back to synchronous processing
+        try:
+            from video.celery_app import process_video_task
+            task = process_video_task.delay(job.id)
+            job.celery_task_id = task.id
+            db.session.commit()
+        except Exception as celery_err:
+            # Redis/Celery not available — process synchronously
+            import logging
+            logging.getLogger(__name__).warning(f"Celery unavailable ({celery_err}), processing synchronously")
+            try:
+                _process_video_sync(job)
+            except Exception as e:
+                job.status = 'failed'
+                job.error_message = str(e)[:500]
+                db.session.commit()
+                flash(f'Processing failed: {str(e)[:200]}', 'danger')
+                return redirect(url_for('video_create'))
+
+        return redirect(url_for('video_status', job_id=job.id))
+
+    # GET: show the editor form
+    available_themes = list_themes()
+    records = Record.query.filter_by(user_id=current_user.id).order_by(Record.id.desc()).limit(20).all()
+    return render_template('video_editor.html', themes=available_themes, records=records, user=current_user)
+
+
+@app.route('/powerlifting/video/status/<int:job_id>')
+@login_required
+def video_status(job_id):
+    """Show processing status for a video job."""
+    job = VideoJob.query.get_or_404(job_id)
+    if job.user_id != current_user.id:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('profile'))
+    return render_template('video_status.html', job=job, user=current_user)
+
+
+@app.route('/powerlifting/video/status/<int:job_id>/json')
+@login_required
+def video_status_json(job_id):
+    """JSON endpoint for polling job status."""
+    from flask import jsonify
+    job = VideoJob.query.get_or_404(job_id)
+    if job.user_id != current_user.id:
+        return jsonify({'error': 'denied'}), 403
+    return jsonify({
+        'status': job.status,
+        'output_filename': job.output_filename,
+        'error_message': job.error_message,
+        'completed_at': job.completed_at,
+    })
+
+
+@app.route('/powerlifting/video/download/<int:job_id>')
+@login_required
+def video_download(job_id):
+    """Download the processed video."""
+    job = VideoJob.query.get_or_404(job_id)
+    if job.user_id != current_user.id:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('profile'))
+    if job.status != 'complete' or not job.output_filename:
+        flash('Video not ready yet.', 'warning')
+        return redirect(url_for('video_status', job_id=job_id))
+
+    output_path = os.path.join(OUTPUT_DIR, job.output_filename)
+    if not os.path.exists(output_path):
+        flash('Output file not found.', 'danger')
+        return redirect(url_for('video_status', job_id=job_id))
+
+    return send_file(
+        output_path,
+        mimetype='video/mp4',
+        as_attachment=True,
+        download_name=f'powerlifting_{job.lift_type}_{job.theme_name}.mp4'
+    )
+
+
+@app.route('/powerlifting/video/list')
+@login_required
+def video_list():
+    """Show all video jobs for the current user."""
+    jobs = VideoJob.query.filter_by(user_id=current_user.id).order_by(VideoJob.id.desc()).all()
+    return render_template('video_list.html', jobs=jobs, user=current_user)
+
 
 if __name__ == '__main__':
     with app.app_context():

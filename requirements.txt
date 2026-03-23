@@ -8,3 +8,7 @@ SQLAlchemy==2.0.23
 pandas==2.1.4
 matplotlib==3.8.2
 Pillow==10.1.0
+moviepy==1.0.3
+celery[redis]==5.3.6
+redis==5.0.1
+numpy==1.26.2
