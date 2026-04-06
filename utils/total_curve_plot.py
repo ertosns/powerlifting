@@ -18,7 +18,7 @@ def make_total_curve_plot(df):
     fig.set_size_inches(16, 10)
     
     # Load and add logo as background watermark
-    logo_path = os.path.join(os.path.dirname(__file__), 'static', 'powerlifting_minimal.png')
+    logo_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'powerlifting_minimal.png')
     if os.path.exists(logo_path):
         logo = Image.open(logo_path)
         # Position the logo in the center as a watermark
