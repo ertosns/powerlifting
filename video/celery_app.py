@@ -2,9 +2,17 @@
 Celery application and video processing task.
 """
 import os
+import sys
 import json
 import logging
 from datetime import datetime
+
+# Ensure the repo root (/app in Docker) is on the path so that
+# 'models', 'powerlifting', 'utils', etc. are importable from within
+# the video/ sub-package.
+_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 from celery import Celery
 
@@ -34,6 +42,12 @@ def process_video_task(self, job_id: int):
     Celery task to process a video job.
     Reads VideoJob from DB, runs the processor, updates status.
     """
+    # Guarantee repo root is on sys.path inside every forked worker
+    import sys as _sys
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+
     from models import app, db
     from models import VideoJob, Record, User
     from video.processor import VideoConfig, RepTimestamp, process_video
