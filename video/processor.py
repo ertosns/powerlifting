@@ -285,18 +285,61 @@ def process_video(config: VideoConfig) -> str:
 
     try:
         # Load input video (frames are now in correct orientation)
-        clip = VideoFileClip(normalised_path)
+        full_clip = VideoFileClip(normalised_path)
+        full_duration = full_clip.duration
+        fps = full_clip.fps or OUTPUT_FPS
+
+        logger.info(f"Source dimensions: {full_clip.size}, fps: {fps}, duration: {full_duration:.1f}s")
+
+        # Trim to just the window around the rep timestamps so we only
+        # process the relevant portion of the video instead of the whole file.
+        intro_seconds = theme.intro_duration_frames / fps
+        outro_buffer = 3.0  # seconds of tail after last rep for PR animation
+        if config.rep_timestamps:
+            first_start = min(r.start_sec for r in config.rep_timestamps)
+            last_end = max(r.end_sec for r in config.rep_timestamps)
+            clip_start = max(0.0, first_start - intro_seconds - 1.0)
+            clip_end = min(full_duration, last_end + outro_buffer)
+        else:
+            clip_start = 0.0
+            clip_end = full_duration
+
+        clip = full_clip.subclip(clip_start, clip_end)
         total_duration = clip.duration
-        fps = clip.fps or OUTPUT_FPS
 
-        logger.info(f"Source dimensions: {clip.size}, fps: {fps}, duration: {total_duration:.1f}s")
+        # Remap rep timestamps to be relative to clip_start
+        remapped_config = VideoConfig(
+            input_path=config.input_path,
+            output_path=config.output_path,
+            lift_type=config.lift_type,
+            weight_kg=config.weight_kg,
+            total_reps=config.total_reps,
+            rep_timestamps=[
+                RepTimestamp(
+                    start_sec=max(0.0, r.start_sec - clip_start),
+                    end_sec=max(0.0, r.end_sec - clip_start),
+                )
+                for r in config.rep_timestamps
+            ],
+            theme_name=config.theme_name,
+            audio_mode=config.audio_mode,
+            is_pr=config.is_pr,
+            wilks_score=config.wilks_score,
+            analysis_text=config.analysis_text,
+            history_data=config.history_data,
+        )
 
-        # Apply frame-by-frame overlay processing
-        frame_processor = _make_frame_processor(config, theme, total_duration, fps)
+        logger.info(
+            f"Trimmed clip: {clip_start:.1f}s–{clip_end:.1f}s "
+            f"({total_duration:.1f}s, ~{int(total_duration * fps)} frames)"
+        )
+
+        # Apply frame-by-frame overlay processing on the trimmed clip
+        frame_processor = _make_frame_processor(remapped_config, theme, total_duration, fps)
         processed = clip.fl(frame_processor)
 
-        # Handle audio
-        final_audio = _build_audio(clip.audio, config, theme, total_duration)
+        # Handle audio (use remapped_config so SFX land at the right times)
+        final_audio = _build_audio(clip.audio, remapped_config, theme, total_duration)
         if final_audio:
             processed = processed.set_audio(final_audio)
 
@@ -316,6 +359,7 @@ def process_video(config: VideoConfig) -> str:
         )
 
         # Cleanup
+        full_clip.close()
         clip.close()
         processed.close()
 

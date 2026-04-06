@@ -320,8 +320,15 @@ def render_pr_alert(frame: Image.Image, is_pr: bool, animation_frame: int,
         font = _get_font(theme.font_name, font_size)
         text = style.text
 
+        # Shrink font until the text fits within 90% of the frame width
+        max_text_w = int(w * 0.90)
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        while tw > max_text_w and font_size > 10:
+            font_size -= 2
+            font = _get_font(theme.font_name, font_size)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         tx = (w - tw) // 2
         ty = h // 2 - th // 2 - 50
 
@@ -535,20 +542,23 @@ def _build_chart_image(history_data: dict, frame_size: tuple,
     dates = history_data['dates']
     x_range = range(len(dates))
 
-    if 'totals' in history_data and history_data['totals']:
-        ax.plot(x_range, history_data['totals'], color=primary_mpl, linewidth=2, label='Total')
     if 'squats' in history_data and history_data['squats']:
-        ax.plot(x_range, history_data['squats'], color=secondary_mpl, linewidth=1.2, alpha=0.7)
+        ax.plot(x_range, history_data['squats'], color=secondary_mpl, linewidth=1.5,
+                alpha=0.85, label='Squat')
     if 'benches' in history_data and history_data['benches']:
-        ax.plot(x_range, history_data['benches'], color=accent_mpl, linewidth=1.2, alpha=0.7)
+        ax.plot(x_range, history_data['benches'], color=accent_mpl, linewidth=1.5,
+                alpha=0.85, label='Bench')
     if 'deadlifts' in history_data and history_data['deadlifts']:
-        ax.plot(x_range, history_data['deadlifts'], color=(1, 1, 0), linewidth=1.2, alpha=0.7)
+        ax.plot(x_range, history_data['deadlifts'], color=(1, 1, 0), linewidth=1.5,
+                alpha=0.85, label='Deadlift')
 
     ax.tick_params(colors='white', labelsize=6)
     for spine in ax.spines.values():
         spine.set_color('white')
         spine.set_alpha(0.3)
     ax.set_xticks([])
+    legend = ax.legend(fontsize=6, loc='upper left', framealpha=0.3,
+                       labelcolor='white', facecolor='black', edgecolor='none')
     fig.tight_layout(pad=0.3)
 
     buf = BytesIO()
@@ -708,8 +718,7 @@ def compose_frame(frame: Image.Image, overlay_state: dict, theme: ThemeConfig) -
                       overlay_state.get('weight_kg', 0),
                       overlay_state.get('lift_type', ''),
                       overlay_state.get('wilks', 0),
-                      overlay_state.get('rank'),
-                      overlay_state.get('analysis_text', ''))
+                      overlay_state.get('rank'))
         if static_key not in _static_overlay_cache:
             base = Image.new('RGBA', (w, h), (0, 0, 0, 0))
             # Strength counter
@@ -720,10 +729,6 @@ def compose_frame(frame: Image.Image, overlay_state: dict, theme: ThemeConfig) -
             if wilks > 0:
                 base = render_wilks_score(base, wilks, theme,
                                           rank=overlay_state.get('rank'))
-            # Analysis text
-            analysis = overlay_state.get('analysis_text', '')
-            if analysis:
-                base = render_analysis_text(base, analysis, theme)
             _static_overlay_cache[static_key] = (base, 0, 0)
 
         static_layer, sx, sy = _static_overlay_cache[static_key]
