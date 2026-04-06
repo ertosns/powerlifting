@@ -30,7 +30,7 @@ services:
     build: .
     container_name: powerlifting-celery
     restart: unless-stopped
-    command: celery -A video.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A video.celery_app worker --loglevel=info --concurrency=1
     volumes:
       - ./instance:/app/instance
       - ./data:/app/data

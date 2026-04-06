@@ -58,12 +58,25 @@ def _draw_rounded_rect(draw: ImageDraw.ImageDraw, bbox, radius, fill, outline=No
 
 
 def _draw_glow_rect(overlay: Image.Image, bbox, color, blur_radius=10):
-    """Draw a glowing rectangle effect."""
-    glow = Image.new('RGBA', overlay.size, (0, 0, 0, 0))
-    glow_draw = ImageDraw.Draw(glow)
-    glow_draw.rectangle(bbox, fill=color)
-    glow = glow.filter(ImageFilter.GaussianBlur(blur_radius))
-    return Image.alpha_composite(overlay, glow)
+    """Draw a glowing rectangle effect (crops to region before blurring for speed)."""
+    x0, y0, x1, y1 = bbox
+    pad = blur_radius * 2
+    ow, oh = overlay.size
+    crop = (max(0, int(x0) - pad), max(0, int(y0) - pad),
+            min(ow, int(x1) + pad), min(oh, int(y1) + pad))
+    cw, ch = crop[2] - crop[0], crop[3] - crop[1]
+    if cw <= 0 or ch <= 0:
+        return overlay
+    small = Image.new('RGBA', (cw, ch), (0, 0, 0, 0))
+    ImageDraw.Draw(small).rectangle(
+        [int(x0) - crop[0], int(y0) - crop[1], int(x1) - crop[0], int(y1) - crop[1]],
+        fill=color)
+    small = small.filter(ImageFilter.GaussianBlur(blur_radius))
+    # Composite the small blurred region back
+    region = overlay.crop(crop)
+    region = Image.alpha_composite(region, small)
+    overlay.paste(region, (crop[0], crop[1]))
+    return overlay
 
 
 # ---------------------------------------------------------------------------
@@ -312,13 +325,21 @@ def render_pr_alert(frame: Image.Image, is_pr: bool, animation_frame: int,
         tx = (w - tw) // 2
         ty = h // 2 - th // 2 - 50
 
-        # Glow behind text
-        glow_layer = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-        glow_draw = ImageDraw.Draw(glow_layer)
-        glow_draw.text((tx, ty), text, fill=(*style.glow_color[:3], min(alpha, style.glow_color[3])),
-                       font=font)
-        glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(20))
-        overlay = Image.alpha_composite(overlay, glow_layer)
+        # Glow behind text (blur only the small text region)
+        pad_g = 40
+        gw_pr, gh_pr = tw + pad_g * 2, th + pad_g * 2
+        glow_small_pr = Image.new('RGBA', (gw_pr, gh_pr), (0, 0, 0, 0))
+        ImageDraw.Draw(glow_small_pr).text(
+            (pad_g, pad_g), text,
+            fill=(*style.glow_color[:3], min(alpha, style.glow_color[3])), font=font)
+        glow_small_pr = glow_small_pr.filter(ImageFilter.GaussianBlur(20))
+        gx0_pr, gy0_pr = max(0, tx - pad_g), max(0, ty - pad_g)
+        pr_region = overlay.crop((gx0_pr, gy0_pr,
+                                   min(w, gx0_pr + gw_pr), min(h, gy0_pr + gh_pr)))
+        prx, pry = pr_region.size
+        glow_small_pr = glow_small_pr.crop((0, 0, prx, pry))
+        pr_region = Image.alpha_composite(pr_region, glow_small_pr)
+        overlay.paste(pr_region, (gx0_pr, gy0_pr))
         draw = ImageDraw.Draw(overlay)
 
         # Main text with shadow
@@ -371,19 +392,134 @@ def render_rep_complete_flash(frame: Image.Image, flash_frame: int,
     return Image.alpha_composite(frame.convert('RGBA'), overlay)
 
 
-def render_progression_chart(frame: Image.Image, history_data: dict,
-                             current_lift_type: str, theme: ThemeConfig) -> Image.Image:
-    """Render a small matplotlib chart of lift progression in the top-left corner."""
-    if not history_data or not history_data.get('dates'):
-        return frame
+# ---------------------------------------------------------------------------
+# "draw-onto" variants for merging into a single composite layer
+# ---------------------------------------------------------------------------
 
-    w, h = frame.size
+def _render_rep_progress_bar_onto(overlay: Image.Image, current_rep: int, total_reps: int,
+                                   rep_progress_pct: float, theme: ThemeConfig) -> Image.Image:
+    """Same as render_rep_progress_bar but draws onto an existing RGBA overlay."""
+    w, h = overlay.size
+    draw = ImageDraw.Draw(overlay)
+
+    style = theme.progress_bar
+    margin_x = int(w * 0.05)
+    bar_y = int(h * theme.progress_bar_y)
+    bar_w = w - 2 * margin_x
+    bar_h = style.height
+
+    overlay = _draw_glow_rect(overlay,
+                              [margin_x - 4, bar_y - 4, margin_x + bar_w + 4, bar_y + bar_h + 4],
+                              style.glow_color, blur_radius=12)
+    draw = ImageDraw.Draw(overlay)
+
+    _draw_rounded_rect(draw, [margin_x, bar_y, margin_x + bar_w, bar_y + bar_h],
+                       style.corner_radius, fill=style.bg_color, outline=style.border_color,
+                       width=style.border_width)
+
+    completed_fraction = (current_rep - 1) / total_reps if total_reps > 0 else 0
+    current_fraction = rep_progress_pct / total_reps if total_reps > 0 else 0
+    total_fill = min(completed_fraction + current_fraction, 1.0)
+    fill_w = int(bar_w * total_fill)
+
+    if fill_w > 0:
+        inner_margin = style.border_width + 1
+        _draw_rounded_rect(draw,
+                           [margin_x + inner_margin, bar_y + inner_margin,
+                            margin_x + inner_margin + fill_w, bar_y + bar_h - inner_margin],
+                           max(style.corner_radius - 2, 0), fill=style.fill_color)
+
+    if style.show_segments and total_reps > 1:
+        for i in range(1, total_reps):
+            seg_x = margin_x + int(bar_w * i / total_reps)
+            draw.line([(seg_x, bar_y + 4), (seg_x, bar_y + bar_h - 4)],
+                      fill=style.border_color, width=2)
+
+    label_font = _get_font(theme.font_name, theme.label_font_size)
+    label_text = style.label_format.format(current=min(current_rep, total_reps), total=total_reps)
+    bbox = draw.textbbox((0, 0), label_text, font=label_font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    label_x = margin_x + (bar_w - tw) // 2
+    label_y = bar_y + (bar_h - th) // 2 - 2
+    draw.text((label_x + 2, label_y + 2), label_text, fill=(0, 0, 0, 200), font=label_font)
+    draw.text((label_x, label_y), label_text, fill=(255, 255, 255, 255), font=label_font)
+    return overlay
+
+
+def _render_rep_counter_big_onto(overlay: Image.Image, current_rep: int, total_reps: int,
+                                  theme: ThemeConfig) -> Image.Image:
+    """Same as render_rep_counter_big but draws onto an existing RGBA overlay."""
+    w, h = overlay.size
+    draw = ImageDraw.Draw(overlay)
+
+    font = _get_font(theme.font_name, theme.title_font_size + 20)
+    text = str(current_rep)
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    tx = w - tw - 40
+    ty = int(h * 0.65)
+
+    r, g, b = theme.primary_color
+    # Crop-blur glow only around the text bounding box
+    pad = 30
+    gw, gh = tw + pad * 2, th + pad * 2
+    glow_small = Image.new('RGBA', (gw, gh), (0, 0, 0, 0))
+    ImageDraw.Draw(glow_small).text((pad, pad), text, fill=(r, g, b, 60), font=font)
+    glow_small = glow_small.filter(ImageFilter.GaussianBlur(15))
+    gx0, gy0 = max(0, tx - pad), max(0, ty - pad)
+    region = overlay.crop((gx0, gy0, min(w, gx0 + gw), min(h, gy0 + gh)))
+    rx, ry = region.size
+    glow_small = glow_small.crop((0, 0, rx, ry))
+    region = Image.alpha_composite(region, glow_small)
+    overlay.paste(region, (gx0, gy0))
+    draw = ImageDraw.Draw(overlay)
+
+    draw.text((tx + 3, ty + 3), text, fill=(0, 0, 0, 180), font=font)
+    draw.text((tx, ty), text, fill=(r, g, b, 200), font=font)
+    return overlay
+
+
+def _render_rep_complete_flash_onto(overlay: Image.Image, flash_frame: int,
+                                    theme: ThemeConfig) -> Image.Image:
+    """Same as render_rep_complete_flash but draws onto an existing RGBA overlay."""
+    total = theme.rep_complete_flash_frames
+    if flash_frame >= total:
+        return overlay
+
+    w, h = overlay.size
+    draw = ImageDraw.Draw(overlay)
+
+    progress = flash_frame / total
+    alpha = int(120 * (1.0 - progress))
+    r, g, b = theme.primary_color
+    thickness = int(20 * (1.0 - progress))
+    draw.rectangle([0, 0, w, thickness], fill=(r, g, b, alpha))
+    draw.rectangle([0, h - thickness, w, h], fill=(r, g, b, alpha))
+    draw.rectangle([0, 0, thickness, h], fill=(r, g, b, alpha))
+    draw.rectangle([w - thickness, 0, w, h], fill=(r, g, b, alpha))
+    return overlay
+
+
+# Cache for pre-rendered static overlays (chart, strength box, wilks badge, analysis).
+# Key: arbitrary string, Value: (PIL Image RGBA, paste_x, paste_y)
+_static_overlay_cache: dict = {}
+
+
+def _build_chart_image(history_data: dict, frame_size: tuple,
+                       theme: ThemeConfig) -> tuple:
+    """Render the progression chart once and return (img, x, y). Result is cached."""
+    w, h = frame_size
+    cache_key = ('chart', id(theme), w, h)
+    if cache_key in _static_overlay_cache:
+        return _static_overlay_cache[cache_key]
+
     chart_x = int(w * theme.chart_pos[0])
     chart_y = int(h * theme.chart_pos[1])
     chart_w = int(w * theme.chart_size[0])
     chart_h = int(h * theme.chart_size[1])
 
-    # Create matplotlib chart with transparent background
     fig, ax = plt.subplots(figsize=(chart_w / 100, chart_h / 100), dpi=100)
     fig.patch.set_alpha(0.0)
     ax.set_facecolor((0, 0, 0, 0.5))
@@ -408,13 +544,11 @@ def render_progression_chart(frame: Image.Image, history_data: dict,
     if 'deadlifts' in history_data and history_data['deadlifts']:
         ax.plot(x_range, history_data['deadlifts'], color=(1, 1, 0), linewidth=1.2, alpha=0.7)
 
-    # Styling
     ax.tick_params(colors='white', labelsize=6)
     for spine in ax.spines.values():
         spine.set_color('white')
         spine.set_alpha(0.3)
     ax.set_xticks([])
-
     fig.tight_layout(pad=0.3)
 
     buf = BytesIO()
@@ -425,7 +559,18 @@ def render_progression_chart(frame: Image.Image, history_data: dict,
     chart_img = Image.open(buf).convert('RGBA')
     chart_img = chart_img.resize((chart_w, chart_h), Image.LANCZOS)
 
-    # Paste onto frame
+    result = (chart_img, chart_x, chart_y)
+    _static_overlay_cache[cache_key] = result
+    return result
+
+
+def render_progression_chart(frame: Image.Image, history_data: dict,
+                             current_lift_type: str, theme: ThemeConfig) -> Image.Image:
+    """Paste the pre-rendered progression chart onto the frame."""
+    if not history_data or not history_data.get('dates'):
+        return frame
+
+    chart_img, chart_x, chart_y = _build_chart_image(history_data, frame.size, theme)
     result = frame.convert('RGBA').copy()
     result.paste(chart_img, (chart_x, chart_y), chart_img)
     return result
@@ -493,13 +638,20 @@ def render_rep_counter_big(frame: Image.Image, current_rep: int, total_reps: int
     tx = w - tw - 40  # Bottom right area
     ty = int(h * 0.65)
 
-    # Glow
-    glow = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-    glow_draw = ImageDraw.Draw(glow)
+    # Glow (blur only the text bounding region for speed)
     r, g, b = theme.primary_color
-    glow_draw.text((tx, ty), text, fill=(r, g, b, 60), font=font)
-    glow = glow.filter(ImageFilter.GaussianBlur(15))
-    overlay = Image.alpha_composite(overlay, glow)
+    pad = 30
+    gw, gh = tw + pad * 2, th + pad * 2
+    glow_small = Image.new('RGBA', (gw, gh), (0, 0, 0, 0))
+    ImageDraw.Draw(glow_small).text((pad, pad), text, fill=(r, g, b, 60), font=font)
+    glow_small = glow_small.filter(ImageFilter.GaussianBlur(15))
+    # Paste the small glow onto the overlay
+    gx0, gy0 = max(0, tx - pad), max(0, ty - pad)
+    region = overlay.crop((gx0, gy0, min(w, gx0 + gw), min(h, gy0 + gh)))
+    rx, ry = region.size
+    glow_crop = glow_small.crop((0, 0, rx, ry))
+    region = Image.alpha_composite(region, glow_crop)
+    overlay.paste(region, (gx0, gy0))
     draw = ImageDraw.Draw(overlay)
 
     draw.text((tx + 3, ty + 3), text, fill=(0, 0, 0, 180), font=font)
@@ -544,43 +696,62 @@ def compose_frame(frame: Image.Image, overlay_state: dict, theme: ThemeConfig) -
 
     # Always render the HUD elements during lifting/rest phases
     if phase in ('lifting', 'rest'):
-        # Background chart (bottom layer)
+        # Background chart — rendered once and cached
         history = overlay_state.get('history_data')
         if history:
             result = render_progression_chart(result, history,
                                               overlay_state.get('lift_type', ''), theme)
 
-        # Strength counter
-        result = render_strength_counter(result, overlay_state.get('weight_kg', 0),
-                                         overlay_state.get('lift_type', ''), theme)
+        # Static overlays: render once, composite from cached RGBA layer
+        w, h = result.size
+        static_key = ('static_hud', id(theme), w, h,
+                      overlay_state.get('weight_kg', 0),
+                      overlay_state.get('lift_type', ''),
+                      overlay_state.get('wilks', 0),
+                      overlay_state.get('rank'),
+                      overlay_state.get('analysis_text', ''))
+        if static_key not in _static_overlay_cache:
+            base = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+            # Strength counter
+            base = render_strength_counter(base, overlay_state.get('weight_kg', 0),
+                                           overlay_state.get('lift_type', ''), theme)
+            # Wilks badge
+            wilks = overlay_state.get('wilks', 0)
+            if wilks > 0:
+                base = render_wilks_score(base, wilks, theme,
+                                          rank=overlay_state.get('rank'))
+            # Analysis text
+            analysis = overlay_state.get('analysis_text', '')
+            if analysis:
+                base = render_analysis_text(base, analysis, theme)
+            _static_overlay_cache[static_key] = (base, 0, 0)
 
-        # Wilks badge
-        wilks = overlay_state.get('wilks', 0)
-        if wilks > 0:
-            result = render_wilks_score(result, wilks, theme,
-                                        rank=overlay_state.get('rank'))
+        static_layer, sx, sy = _static_overlay_cache[static_key]
+        result = Image.alpha_composite(result, static_layer)
 
-        # Analysis text
-        analysis = overlay_state.get('analysis_text', '')
-        if analysis:
-            result = render_analysis_text(result, analysis, theme)
+        # Merge all per-frame dynamic layers into ONE composite operation
+        w_r, h_r = result.size
+        dynamic = Image.new('RGBA', (w_r, h_r), (0, 0, 0, 0))
 
-        # Rep progress bar
-        result = render_rep_progress_bar(result, overlay_state.get('current_rep', 1),
-                                         overlay_state.get('total_reps', 1),
-                                         overlay_state.get('rep_progress_pct', 0), theme)
+        # Rep progress bar → draw into dynamic layer
+        dynamic = _render_rep_progress_bar_onto(dynamic, overlay_state.get('current_rep', 1),
+                                                overlay_state.get('total_reps', 1),
+                                                overlay_state.get('rep_progress_pct', 0), theme)
 
-        # Big rep counter during lift
+        # Big rep counter during lift → draw into dynamic layer
         if phase == 'lifting':
-            result = render_rep_counter_big(result, overlay_state.get('current_rep', 1),
-                                            overlay_state.get('total_reps', 1), theme)
+            dynamic = _render_rep_counter_big_onto(dynamic, overlay_state.get('current_rep', 1),
+                                                   overlay_state.get('total_reps', 1), theme)
 
-        # Rep complete flash
+        # Rep complete flash → draw into dynamic layer
         flash_frame = overlay_state.get('rep_complete_flash_frame')
         if flash_frame is not None:
-            result = render_rep_complete_flash(result, flash_frame, theme)
+            dynamic = _render_rep_complete_flash_onto(dynamic, flash_frame, theme)
 
-        # PR alert (top layer)
+        # One composite for all dynamic overlays
+        result = Image.alpha_composite(result, dynamic)
+
+        # PR alert (top layer) — kept separate due to complex compositing internally
         if overlay_state.get('is_pr', False):
             result = render_pr_alert(result, True, overlay_state.get('pr_animation_frame', 999),
                                      theme)
