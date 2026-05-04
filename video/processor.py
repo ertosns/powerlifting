@@ -57,76 +57,29 @@ def _get_video_rotation(filepath: str) -> int:
         return 0
 
 
-def _get_display_size(filepath: str):
-    """Return the true display (width, height) accounting for SAR/DAR via ffprobe."""
-    try:
-        result = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-print_format', 'json',
-             '-show_streams', filepath],
-            capture_output=True, text=True, timeout=10
-        )
-        data = json.loads(result.stdout)
-        for stream in data.get('streams', []):
-            if stream.get('codec_type') == 'video':
-                w = stream.get('width', 0)
-                h = stream.get('height', 0)
-                # Prefer display dimensions from DAR if available
-                dar = stream.get('display_aspect_ratio', '')
-                if dar and ':' in dar:
-                    try:
-                        dw, dh = map(int, dar.split(':'))
-                        if dw > 0 and dh > 0:
-                            # Scale height to match DAR while keeping coded width
-                            display_h = round(w * dh / dw)
-                            return w, display_h
-                    except (ValueError, ZeroDivisionError):
-                        pass
-                return w, h
-    except Exception as e:
-        logger.warning(f"Could not detect display size: {e}")
-    return None, None
-
-
 def _normalize_input(filepath: str) -> str:
     """
     If the input video has rotation metadata, use ffmpeg to produce a
     rotation-corrected temp copy so moviepy loads frames in the correct
-    orientation.  Also forces SAR=1:1 so the output is not stretched.
+    orientation.
+    ffmpeg applies the rotation automatically (autorotate) before the vf
+    chain, so we only need to ensure even pixel dimensions and SAR=1:1.
     Returns the path to use (original or temp file).
     """
     rotation = _get_video_rotation(filepath)
-    disp_w, disp_h = _get_display_size(filepath)
-
-    needs_rotation = rotation != 0
-
-    if not needs_rotation:
+    if rotation == 0:
         return filepath  # No rotation — use original file directly
 
     logger.info(f"Input video has rotation={rotation}°, normalizing with ffmpeg …")
     temp_fd, temp_path = tempfile.mkstemp(suffix='.mp4')
     os.close(temp_fd)
-
-    # Determine correct output dimensions after rotation
-    if needs_rotation and abs(rotation) in (90, 270) and disp_w and disp_h:
-        # After 90/270 rotation width and height are swapped
-        out_w, out_h = disp_h, disp_w
-    elif disp_w and disp_h:
-        out_w, out_h = disp_w, disp_h
-    else:
-        out_w, out_h = None, None
-
-    # Force even dimensions (required by libx264)
-    if out_w and out_h:
-        out_w = out_w if out_w % 2 == 0 else out_w - 1
-        out_h = out_h if out_h % 2 == 0 else out_h - 1
-        scale_filter = f'scale={out_w}:{out_h},setsar=1:1'
-    else:
-        scale_filter = 'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1:1'
-
     try:
         subprocess.run(
             ['ffmpeg', '-y', '-i', filepath,
-             '-vf', scale_filter,
+             # ffmpeg autorotate applies the rotation before this filter chain,
+             # so iw/ih here refer to the post-rotation (display) dimensions.
+             # trunc(x/2)*2 rounds down to even — required by libx264.
+             '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1:1',
              '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
              '-c:a', 'copy',
              '-movflags', '+faststart',
