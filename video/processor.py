@@ -61,25 +61,35 @@ def _normalize_input(filepath: str) -> str:
     """
     If the input video has rotation metadata, use ffmpeg to produce a
     rotation-corrected temp copy so moviepy loads frames in the correct
-    orientation.
-    ffmpeg applies the rotation automatically (autorotate) before the vf
-    chain, so we only need to ensure even pixel dimensions and SAR=1:1.
-    Returns the path to use (original or temp file).
+    orientation.  Returns the path to use (original or temp file).
     """
     rotation = _get_video_rotation(filepath)
     if rotation == 0:
         return filepath  # No rotation — use original file directly
 
-    logger.info(f"Input video has rotation={rotation}°, normalizing with ffmpeg …")
+    # Map rotation degrees → ffmpeg transpose filter
+    # rotation metadata convention: clockwise rotation needed to display correctly
+    # ffmpeg transpose: 0=90°CCW+vflip, 1=90°CW, 2=90°CCW, 3=90°CW+vflip
+    rot_norm = rotation % 360
+    if rot_norm == 90:
+        vfilter = 'transpose=1'                      # 90° clockwise
+    elif rot_norm == 270 or rot_norm == -90 % 360:   # -90 → 270
+        vfilter = 'transpose=2'                      # 90° counter-clockwise
+    elif rot_norm == 180:
+        vfilter = 'transpose=2,transpose=2'          # 180°
+    else:
+        return filepath
+
+    logger.info(f"Input video has rotation={rotation}° (norm={rot_norm}°), applying {vfilter}")
     temp_fd, temp_path = tempfile.mkstemp(suffix='.mp4')
     os.close(temp_fd)
     try:
         subprocess.run(
-            ['ffmpeg', '-y', '-i', filepath,
-             # ffmpeg autorotate applies the rotation before this filter chain,
-             # so iw/ih here refer to the post-rotation (display) dimensions.
-             # trunc(x/2)*2 rounds down to even — required by libx264.
-             '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1:1',
+            ['ffmpeg', '-y',
+             '-noautorotate',                        # disable autorotate so transpose isn't doubled
+             '-i', filepath,
+             '-vf', f'{vfilter},scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1:1',
+             '-metadata:s:v:0', 'rotate=0',          # strip rotation metadata
              '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
              '-c:a', 'copy',
              '-movflags', '+faststart',
@@ -88,6 +98,13 @@ def _normalize_input(filepath: str) -> str:
         )
         logger.info(f"Normalised input saved to {temp_path}")
         return temp_path
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"ffmpeg normalisation failed: {e.stderr[-500:] if e.stderr else e}")
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        return filepath
     except Exception as e:
         logger.warning(f"ffmpeg normalisation failed ({e}), using original")
         try:
