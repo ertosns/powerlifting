@@ -146,8 +146,10 @@ def render_rep_progress_bar(frame: Image.Image, current_rep: int, total_reps: in
 
     style = theme.progress_bar
     margin_x = int(w * 0.05)
+    # Reserve right side for the big rep counter (roughly 18% of width)
+    margin_x_right = int(w * 0.23)
     bar_y = int(h * theme.progress_bar_y)
-    bar_w = w - 2 * margin_x
+    bar_w = w - margin_x - margin_x_right
     bar_h = style.height
 
     # Background with glow
@@ -411,8 +413,10 @@ def _render_rep_progress_bar_onto(overlay: Image.Image, current_rep: int, total_
 
     style = theme.progress_bar
     margin_x = int(w * 0.05)
+    # Reserve right side for the big rep counter (roughly 18% of width)
+    margin_x_right = int(w * 0.23)
     bar_y = int(h * theme.progress_bar_y)
-    bar_w = w - 2 * margin_x
+    bar_w = w - margin_x - margin_x_right
     bar_h = style.height
 
     overlay = _draw_glow_rect(overlay,

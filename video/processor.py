@@ -189,6 +189,18 @@ def _get_overlay_state(t: float, config: VideoConfig, theme: ThemeConfig,
 def _make_frame_processor(config: VideoConfig, theme: ThemeConfig,
                           total_duration: float, fps: int = OUTPUT_FPS):
     """Return a function that processes a single frame at time t."""
+    # Pre-load the B7 Gym logo once for use as a watermark on every frame
+    _logo_img = None
+    _logo_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'static', 'images', 'resized-logo.png'
+    )
+    if os.path.exists(_logo_path):
+        try:
+            _logo_img = Image.open(_logo_path).convert('RGBA')
+        except Exception as e:
+            logger.warning(f"Could not load logo watermark: {e}")
+
     def process_frame(get_frame, t):
         # Get the raw frame as numpy array
         raw = get_frame(t)
@@ -201,6 +213,19 @@ def _make_frame_processor(config: VideoConfig, theme: ThemeConfig,
 
         # Compose overlays
         result = compose_frame(pil_frame, overlay_state, theme)
+
+        # Paste B7 Gym logo watermark in bottom-LEFT corner (80% opacity)
+        # Bottom-right is reserved for the rep counter overlay
+        if _logo_img is not None:
+            w, h = result.size
+            logo_w = max(80, int(w * 0.13))
+            logo_h = int(_logo_img.height * (logo_w / _logo_img.width))
+            logo = _logo_img.resize((logo_w, logo_h), Image.LANCZOS)
+            r, g, b, a = logo.split()
+            a = a.point(lambda v: int(v * 0.80))
+            logo.putalpha(a)
+            pad = 14
+            result.paste(logo, (pad, h - logo_h - pad), logo)
 
         # Convert back to RGB numpy array for moviepy
         return np.array(result.convert('RGB'))
