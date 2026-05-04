@@ -214,8 +214,8 @@ def _make_frame_processor(config: VideoConfig, theme: ThemeConfig,
         # Compose overlays
         result = compose_frame(pil_frame, overlay_state, theme)
 
-        # Paste B7 Gym logo watermark in bottom-LEFT corner (80% opacity)
-        # Bottom-right is reserved for the rep counter overlay
+        # Paste B7 Gym logo watermark in bottom-RIGHT corner (80% opacity)
+        # Positioned below the rep counter (counter is at h*0.65, logo sits near bottom)
         if _logo_img is not None:
             w, h = result.size
             logo_w = max(80, int(w * 0.13))
@@ -225,7 +225,7 @@ def _make_frame_processor(config: VideoConfig, theme: ThemeConfig,
             a = a.point(lambda v: int(v * 0.80))
             logo.putalpha(a)
             pad = 14
-            result.paste(logo, (pad, h - logo_h - pad), logo)
+            result.paste(logo, (w - logo_w - pad, h - logo_h - pad), logo)
 
         # Convert back to RGB numpy array for moviepy
         return np.array(result.convert('RGB'))

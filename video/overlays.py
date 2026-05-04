@@ -470,7 +470,7 @@ def _render_rep_counter_big_onto(overlay: Image.Image, current_rep: int, total_r
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     tx = w - tw - 40
-    ty = int(h * 0.65)
+    ty = int(h * 0.55)
 
     r, g, b = theme.primary_color
     # Crop-blur glow only around the text bounding box
@@ -650,7 +650,7 @@ def render_rep_counter_big(frame: Image.Image, current_rep: int, total_reps: int
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     tx = w - tw - 40  # Bottom right area
-    ty = int(h * 0.65)
+    ty = int(h * 0.55)
 
     # Glow (blur only the text bounding region for speed)
     r, g, b = theme.primary_color
